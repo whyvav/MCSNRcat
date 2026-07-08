@@ -52,7 +52,8 @@ PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("alias", "Alias / common name", ""),
         ("klass", "Status", ""),
         ("sn_type", "SN type", "Ia = thermonuclear, CC = core collapse; '?' = tentative"),
-        ("ref_discovery", "Discovery / classification ref", ""),
+        ("ref_discovery", "Discovery ref", ""),
+        ("ref_confirm", "Confirmation ref", "reference that promoted candidate → confirmed"),
     ]),
     ("Position (ICRS)", [
         ("ra", "RA [deg]", ""),
@@ -105,6 +106,59 @@ $head_extra
 Imagery: CDS Aladin Lite / HiPS. Built from the
 <a href="https://github.com/whyvav/MCSNRcat">source on GitHub</a>.</footer>
 </body></html>""")
+
+
+#: Columns the generator and downstream consumers rely on.
+REQUIRED_COLUMNS = ["snr_key", "id", "name", "ra", "dec", "klass"]
+VALID_KLASSES = {"SNR", "SNR_candidate"}
+
+
+def validate_catalog(df: pd.DataFrame) -> None:
+    """Fail fast on structural problems in the source catalog.
+
+    Enforces the invariants the site (and VLMism) depend on, so a hand-edit
+    typo is caught at build time instead of silently shipping a broken page.
+    Raises ``ValueError`` listing every problem found.
+    """
+    errors: list[str] = []
+
+    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(f"catalog missing required columns: {missing}")
+
+    bad_klass = sorted(set(df["klass"]) - VALID_KLASSES)
+    if bad_klass:
+        errors.append(f"unknown klass values: {bad_klass} (allowed: {sorted(VALID_KLASSES)})")
+
+    for col in ("snr_key", "id", "name"):
+        dupes = df[col][df[col].duplicated()].tolist()
+        if dupes:
+            errors.append(f"duplicate {col}: {dupes}")
+
+    for _, r in df.iterrows():
+        if r["klass"] == "SNR" and not str(r["id"]).startswith("MCSNR "):
+            errors.append(f"{r['snr_key']}: confirmed SNR id {r['id']!r} must start with 'MCSNR '")
+        if r["klass"] == "SNR_candidate" and str(r["id"]) != str(r["name"]):
+            errors.append(f"{r['snr_key']}: candidate id {r['id']!r} must equal name {r['name']!r}")
+
+    for col in ("ra", "dec"):
+        if not pd.to_numeric(df[col], errors="coerce").notna().all():
+            errors.append(f"non-numeric values in {col}")
+
+    if errors:
+        raise ValueError("catalog validation failed:\n  - " + "\n  - ".join(errors))
+    logger.info("catalog validation passed: %d objects, no structural errors", len(df))
+
+
+def latest_catalog(data_dir: Path = Path("data")) -> Path:
+    """Return the highest-versioned ``lmc_snrs_extended_v*.csv`` in ``data_dir``."""
+    cands = sorted(
+        data_dir.glob("lmc_snrs_extended_v*.csv"),
+        key=lambda p: int(p.stem.rsplit("_v", 1)[-1]),
+    )
+    if not cands:
+        raise FileNotFoundError(f"no lmc_snrs_extended_v*.csv found in {data_dir}")
+    return cands[-1]
 
 
 def slugify(obj_id: str) -> str:
@@ -351,12 +405,19 @@ pre { background:var(--panel); border-radius:8px; padding:10px 14px; overflow-x:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--catalog", default="data/lmc_snrs_extended_v2.csv")
+    parser.add_argument(
+        "--catalog", default=None,
+        help="path to catalog CSV (default: highest-versioned data/lmc_snrs_extended_v*.csv)",
+    )
     parser.add_argument("--out", default="site")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    df = pd.read_csv(args.catalog)
+    catalog = Path(args.catalog) if args.catalog else latest_catalog()
+    logger.info("building from %s", catalog)
+    df = pd.read_csv(catalog)
+    validate_catalog(df)
+    args.catalog = str(catalog)
     version = Path(args.catalog).stem.replace("lmc_snrs_extended_", "")
     out = Path(args.out)
     (out / "objects").mkdir(parents=True, exist_ok=True)

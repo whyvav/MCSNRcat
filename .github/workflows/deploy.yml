@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install pandas numpy
-      - run: python build.py --catalog data/lmc_snrs_extended_v2.csv --out site
+      - run: python build.py --out site   # auto-selects highest-versioned data/lmc_snrs_extended_v*.csv
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
   deploy:

@@ -2,8 +2,8 @@
 
 A living, multiwavelength census of supernova remnants in the Magellanic Clouds — the MC counterpart to
 [Green's Galactic SNR catalogue](https://www.mrao.cam.ac.uk/surveys/snrs/)
-and [SNRcat](http://snrcat.physics.umanitoba.ca/). Currently compiles **78 confirmed +
-46 candidate** SNRs in LMC from literature. SMC SNRs to be cataloged later.
+and [SNRcat](http://snrcat.physics.umanitoba.ca/). Currently compiles **80 confirmed +
+44 candidate** SNRs in LMC from literature. SMC SNRs to be cataloged later.
 
 **Live site:** https://whyvav.github.io/MCSNRcat/
 
@@ -25,19 +25,22 @@ shock-enhanced [S II]/Hα ≥ 0.4. One criterion → candidate.
 - Bozzetto et al. 2017, ApJS 230, 2 (radio/statistical)
 - Leahy 2017, ApJ 837, 36 (energetics)
 - Yew et al. 2021, MNRAS 500, 2336 (optical)
+- Filipović et al. 2022, MNRAS 512, 265 (J0624-6948 discovery)
 - Kavanagh et al. 2022, MNRAS 515, 4099 (XMM faint/evolved)
 - Bozzetto et al. 2022, MNRAS 518, 2574 (ASKAP)
 - Zangrandi et al. 2024, A&A 692, A237 (eROSITA census)
-- Shukla 2024, [MSc thesis](https://github.com/whyvav/MThesis) (consolidation; J0500-6512 confirmation)
+- Sasaki et al. 2025, A&A 693, L15 (XMM/MeerKAT; J0614-7251 & J0624-6948 confirmations)
+- Shukla 2024, [MSc Thesis](https://github.com/whyvav/MThesis) (consolidation; J0500-6512 confirmation)
 
 ## Architecture
 
-**Versioned CSV → `build.py` → static site.** No database, no server code.
+**Versioned CSV → `build.py` → static site.** No database, no server code, no Excel. The CSV `data/lmc_snrs_extended_v<N>.csv` is the hand-editable source of truth; `build.py` auto-selects the highest version and validates it. `catalog.py` provides safe helper commands (`confirm`, `set`, `validate`, `new-version`) for routine updates. [VLMism](https://github.com/whyvav/VLMism) reads this CSV for its Phase-1 catalog (it no longer produces it).
 
 ```
 MCSNRcat/
-├── data/lmc_snrs_extended_v2.csv   ← input catalog
-├── build.py                        ← generator (pandas + stdlib only)
+├── data/lmc_snrs_extended_v3.csv   ← input catalog (source of truth; latest wins)
+├── build.py                        ← generator + validator (pandas + stdlib)
+├── catalog.py                      ← maintenance CLI (confirm / set / validate / new-version)
 ├── site/                           ← built output (gitignored; CI rebuilds it)
 │   ├── index.html                  census table + filters + clickable sky map
 │   ├── objects/<ID>.html           ×124: Aladin Lite viewer, grouped
@@ -54,7 +57,7 @@ HiPS (Aladin Lite), so the repo stores **no images**.
 ## Run locally
 
 ```bash
-python build.py --catalog data/lmc_snrs_extended_v2.csv --out site
+python build.py --out site          # auto-selects the latest catalog version
 python -m http.server -d site 8000     # open http://localhost:8000
 ```
 
