@@ -36,14 +36,33 @@ logger = logging.getLogger(__name__)
 SITE_NAME = "MCSNRcat"
 VERSION_NOTE = "Maintained by V. Shukla; assembled from the literature (see About)."
 
-#: HiPS surveys offered in the per-object viewer. IDs must exist on the CDS
-#: HiPS network — verify at https://aladin.cds.unistra.fr/hips/list before
-#: adding more (e.g. eROSITA, SUMSS, GLEAM when available).
+#: HiPS surveys offered in the per-object viewer. Entries are either CDS
+#: registry IDs (verify at https://aladin.cds.unistra.fr/hips/list) or direct
+#: HiPS base URLs (for maps not registered at CDS, e.g. the MPE-hosted
+#: eROSITA DR1 HiPS). All verified working 2026-07-08 — see
+#: VLMism/docs/DATA_SOURCING.md §4 for provenance.
 ALADIN_SURVEYS = [
     ("CDS/P/DSS2/color", "DSS2 optical"),
+    ("CDS/P/SHASSA/H", "SHASSA Hα"),
+    ("https://erosita.mpe.mpg.de/dr1/erodat/static/hips/eRASS1_RGB_Rate_c010/",
+     "eROSITA DR1 X-ray (RGB)"),
+    ("ESDC/P/XMM/EPIC-RGB", "XMM-Newton EPIC (RGB)"),
+    ("CSIRO/P/RACS/low/I", "RACS-low 888 MHz radio"),
+    ("CDS/P/SUMSS", "SUMSS 843 MHz radio"),
     ("CDS/P/GALEXGR6/AIS/color", "GALEX UV"),
     ("CDS/P/allWISE/color", "AllWISE mid-IR"),
     ("CDS/P/2MASS/color", "2MASS near-IR"),
+]
+
+#: Cutout PNG bands shown on object pages (when images/<slug>/ exists),
+#: in display order: (band suffix, label).
+IMAGE_BANDS = [
+    ("rgb", "Composite (R radio / G Hα / B X-ray)"),
+    ("xray_soft", "eROSITA 0.2–2.3 keV"),
+    ("halpha", "Hα (DeMCELS)"),
+    ("sii", "[S II] (DeMCELS)"),
+    ("sii_halpha_ratio", "[S II]/Hα ratio"),
+    ("radio_888", "ASKAP 888 MHz"),
 ]
 
 PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
@@ -175,7 +194,59 @@ def fmt(v: object, nd: int = 3) -> str:
     return str(v)
 
 
-def object_page(row: pd.Series, version: str) -> str:
+def load_image_manifest(images_dir: Path) -> dict[str, dict]:
+    """Index the pipeline-generated cutout PNGs by object slug.
+
+    Expects the layout written by VLMism ``scripts/04_build_snr_images.py``:
+    ``images/<slug>/<slug>_<band>.png`` plus ``images/manifest.csv``. Returns
+    ``{slug: {band: {"file": ..., "survey": ..., "viz_grade": bool}}}``.
+    Missing directory → empty dict (the site builds fine without images).
+    """
+    out: dict[str, dict] = {}
+    manifest = images_dir / "manifest.csv"
+    if not manifest.exists():
+        if images_dir.exists():
+            logger.warning("%s exists but has no manifest.csv — ignoring", images_dir)
+        return out
+    df = pd.read_csv(manifest)
+    for _, r in df.iterrows():
+        slug_map = out.setdefault(str(r["slug"]), {})
+        slug_map[str(r["band"])] = {
+            "file": str(r["file"]),
+            "survey": str(r.get("survey", "")),
+            "viz_grade": str(r.get("viz_grade", "")).lower() == "true",
+        }
+    logger.info("image manifest: %d objects with cutout PNGs", len(out))
+    return out
+
+
+def images_panel(slug: str, obj_images: dict) -> str:
+    """HTML for the multiwavelength cutout strip of one object page."""
+    cards = ""
+    for band, label in IMAGE_BANDS:
+        entry = obj_images.get(band)
+        if not entry:
+            continue
+        tag = '<span class="viz">quick-look</span>' if entry["viz_grade"] else ""
+        cards += f"""<figure>
+  <a href="../images/{entry['file']}" target="_blank">
+    <img src="../images/{entry['file']}" loading="lazy" alt="{slug} {label}"></a>
+  <figcaption>{label}{tag}<span class="note">{entry['survey']}</span></figcaption>
+</figure>"""
+    if not cards:
+        return ""
+    return f"""
+<section class="cutouts"><h3>Multiwavelength cutouts</h3>
+<div class="cutgrid">{cards}</div>
+<p class="note">Pipeline-generated cutouts (asinh stretch). "quick-look" =
+hips2fits fallback, visualization grade only — do not measure fluxes on
+these. Provenance: <a href="../images/manifest.csv">images/manifest.csv</a>;
+pipeline: <a href="https://github.com/whyvav/VLMism">VLMism</a>.</p>
+</section>"""
+
+
+def object_page(row: pd.Series, version: str,
+                obj_images: dict | None = None) -> str:
     fov = max(3.0 * (row.get("d_arcmin") or 4.0) / 60.0, 0.12)
     surveys_js = json.dumps([s for s, _ in ALADIN_SURVEYS])
     options = "".join(
@@ -216,6 +287,7 @@ def object_page(row: pd.Series, version: str) -> str:
   </div>
   <div>{groups_html}</div>
 </div>
+{images_panel(slugify(row["id"]), obj_images or {})}
 <script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
 <script>
 A.init.then(() => {{
@@ -360,8 +432,22 @@ emission; (3) shock-enhanced [S II]/Hα ≥ 0.4. One criterion → candidate.</p
 	month = nov,
 	year = {2024}
 }</code></pre>
+<h3>Imagery</h3>
+<p>Object pages stream survey imagery client-side via
+<a href="https://aladin.cds.unistra.fr/">Aladin Lite</a> (DSS2, SHASSA Hα,
+eROSITA-DE DR1, XMM-Newton EPIC, RACS-low, SUMSS, GALEX, AllWISE, 2MASS
+HiPS), and — where generated — show pipeline cutout PNGs (eROSITA-DE DR1
+X-ray, DeMCELS DR1 Hα &amp; [S II], ASKAP-EMU 888 MHz) built by the
+<a href="https://github.com/whyvav/VLMism">VLMism</a> pipeline, with
+per-file provenance in <a href="images/manifest.csv">images/manifest.csv</a>.
+Credits: eROSITA-DE (Merloni et al. 2024); DeMCELS (Points et al. 2024,
+NSF NOIRLab); ASKAP-EMU (Pennock et al. 2021, CSIRO/CASDA); SHASSA
+(Gaustad et al. 2001). Cutouts marked "quick-look" come from
+<a href="https://alasky.cds.unistra.fr/hips-image-services/hips2fits">CDS
+hips2fits</a> and are for visualization only.</p>
 <h3>Data &amp; feedback</h3>
-<p>Download: <a href="catalog.csv">CSV</a> · <a href="catalog.json">JSON</a>.
+<p>Download: <a href="catalog.csv">CSV</a> · <a href="catalog.json">JSON</a> ·
+cutout images <a href="images/manifest.csv">manifest</a>.
 Corrections and new-object reports: open an issue on the repository.</p>"""
     return PAGE.substitute(
         title=f"About — {SITE_NAME}", root=".", site_name=SITE_NAME, body=body,
@@ -400,6 +486,13 @@ a { color:#7dd3fc; }
 .objgrid table th { width:56%; font-weight:500; opacity:.85; }
 .controls { margin:8px 0; } .linkrow { display:flex; gap:14px; margin:8px 0; flex-wrap:wrap; }
 pre { background:var(--panel); border-radius:8px; padding:10px 14px; overflow-x:auto; font-size:12px; }
+.cutouts { background:var(--panel); border-radius:10px; padding:8px 12px; margin-top:14px; }
+.cutgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; }
+.cutgrid figure { margin:0; }
+.cutgrid img { width:100%; border-radius:6px; display:block; image-rendering:auto; }
+.cutgrid figcaption { font-size:11.5px; margin-top:4px; line-height:1.35; }
+.cutgrid figcaption .note { display:block; }
+.viz { background:#b45309; color:#fff; border-radius:8px; padding:0 6px; font-size:10px; margin-left:6px; }
 """
 
 
@@ -410,6 +503,11 @@ def main() -> None:
         help="path to catalog CSV (default: highest-versioned data/lmc_snrs_extended_v*.csv)",
     )
     parser.add_argument("--out", default="site")
+    parser.add_argument(
+        "--images", default="images",
+        help="directory of pipeline-generated cutout PNGs (default: images/; "
+        "skipped silently when absent)",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -429,11 +527,20 @@ def main() -> None:
     (out / "catalog.json").write_text(
         df.replace({np.nan: None}).to_json(orient="records"), encoding="utf-8"
     )
+    images_dir = Path(args.images)
+    image_index = load_image_manifest(images_dir)
+    if image_index:
+        shutil.copytree(images_dir, out / "images", dirs_exist_ok=True)
+
     for _, row in df.iterrows():
-        page = object_page(row, version)
-        (out / "objects" / f"{slugify(row['id'])}.html").write_text(page, encoding="utf-8")
+        slug = slugify(row["id"])
+        page = object_page(row, version, obj_images=image_index.get(slug))
+        (out / "objects" / f"{slug}.html").write_text(page, encoding="utf-8")
     shutil.copy(args.catalog, out / Path(args.catalog).name)
-    logger.info("built %s: %d object pages (+index/about/downloads)", out, len(df))
+    logger.info(
+        "built %s: %d object pages (%d with cutout PNGs)",
+        out, len(df), sum(1 for s in image_index if any(image_index[s])),
+    )
 
 
 if __name__ == "__main__":
