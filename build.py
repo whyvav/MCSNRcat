@@ -381,9 +381,9 @@ def index_page(df: pd.DataFrame, version: str) -> str:
       </div>
       <svg id="sky" viewBox="0 0 460 430" preserveAspectRatio="xMidYMid meet" role="img" aria-label="LMC SNR sky distribution"></svg>
       <div class="map-legend"><span><i class="dot snr"></i>Confirmed</span><span><i class="dot cand"></i>Candidate</span></div>
-      <p class="note">RA increases leftward. Drag to pan, use +/- to zoom. Marker size follows angular radius. Background: SHASSA H&alpha; (CDS).</p>
+      <p class="note">RA increases leftward. Drag to pan, scroll to zoom. Marker size follows angular radius. Background: SHASSA H&alpha; (CDS).</p>
     </section>
-    <section id="tablebox" aria-label="Sortable object table"><table id="tbl"><thead></thead><tbody></tbody></table></section>
+    <section id="tablebox" aria-label="Sortable object table"><div class="table-scroll"><table id="tbl"><thead></thead><tbody></tbody></table></div></section>
   </div>
 </section>
 <section class="coverage" aria-label="Multiwavelength coverage">
@@ -625,6 +625,26 @@ document.getElementById("zoomReset").onclick=()=>{
   };
   skyEl.addEventListener("pointerup",endDrag);
   skyEl.addEventListener("pointercancel",endDrag);
+  // Mouse-wheel zoom, centred on the cursor: convert the pointer to sky
+  // coordinates before and after the zoom and pan so that point stays fixed.
+  // At a zoom limit the event is left unconsumed so the page scrolls instead:
+  // scrolling down at min zoom, or up at max zoom, falls through to the page.
+  skyEl.addEventListener("wheel",e=>{
+    if(!skyTangent) return;
+    const factor=Math.exp(-clamp(e.deltaY,-120,120)*0.0025);
+    const newZoom=Math.min(ZOOM_MAX,Math.max(ZOOM_MIN,zoomLevel*factor));
+    if(Math.abs(newZoom-zoomLevel)<1e-6) return;
+    e.preventDefault();
+    const p=svgPoint(e);
+    const scaleOld=skyBaseScale*zoomLevel;
+    const xi=(SKY_CX-p.x)/scaleOld+panXi, eta=(SKY_CY-p.y)/scaleOld+panEta;
+    zoomLevel=newZoom;
+    const scaleNew=skyBaseScale*zoomLevel;
+    panXi=clamp(xi-(SKY_CX-p.x)/scaleNew, -skyTangent.xiRange, skyTangent.xiRange);
+    panEta=clamp(eta-(SKY_CY-p.y)/scaleNew, -skyTangent.etaRange, skyTangent.etaRange);
+    updateZoomButtons();
+    drawSky(lastSkyRows);
+  },{passive:false});
   skyEl.addEventListener("click",e=>{
     if(dragMoved){ e.preventDefault(); e.stopPropagation(); dragMoved=false; }
   },true);
@@ -856,7 +876,11 @@ button:hover, input:focus, select:focus { border-color:var(--snr); outline:none;
 .dot.cand { background:var(--cand); }
 .note { color:var(--muted); font-size:11.5px; opacity:.9; }
 #skybox .note { margin:7px 16px 14px; }
-#tablebox { min-width:0; max-width:100%; overflow:auto; background:var(--panel); }
+/* The table cell has no intrinsic height (its content is absolutely
+   positioned), so the sky-map cell alone sets the #wrap row height; the
+   inner .table-scroll then fills that height and scrolls internally. */
+#tablebox { position:relative; min-width:0; max-width:100%; background:var(--panel); }
+.table-scroll { position:absolute; inset:0; overflow:auto; }
 table { border-collapse:collapse; width:100%; font-size:12.5px; }
 #tbl { min-width:1040px; }
 th,td { padding:9px 12px; text-align:left; white-space:nowrap; border-bottom:1px solid #eee8dc; }
@@ -912,6 +936,10 @@ ul { padding-left:22px; }
   .stat-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
   #wrap, .objgrid, .coverage { grid-template-columns:1fr; }
   #skybox { border-right:0; border-bottom:1px solid var(--line); }
+  /* Stacked: the table gets its own row, so restore normal flow and cap the
+     height instead of filling the (now absent) sibling column. */
+  #tablebox { position:static; }
+  .table-scroll { position:static; inset:auto; max-height:70vh; }
 }
 @media (max-width:680px) {
   main, .site-footer { width:min(calc(100% - 28px), 1440px); }
