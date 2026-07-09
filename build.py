@@ -34,7 +34,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-SITE_NAME = "MCSNRcat^log"
+SITE_NAME = "MCSNRcat"
 SITE_CANONICAL_NAME = "MCSNRcatalog"
 VERSION_NOTE = "Maintained by V. Shukla; assembled from the literature (see About)."
 
@@ -131,11 +131,11 @@ $head_extra
     <a href="$root/catalog.csv">CSV</a>
     <a href="$root/catalog.json">JSON</a>
   </nav>
-  <span class="ver">Data version: <code>$version</code></span>
+  <span class="ver">Data: <code>$version</code></span>
 </header>
 <main>$body</main>
 <footer class="site-footer">
-  <span>$version_note Data version: <code>$version</code>.</span>
+  <span>$version_note Data: <code>$version</code>.</span>
   <span>Imagery: CDS Aladin Lite / HiPS.</span>
   <span>Built from the <a href="https://github.com/whyvav/MCSNRcat">source on GitHub</a>.</span>
 </footer>
@@ -330,6 +330,7 @@ A.init.then(() => {{
   const aladin = A.aladin("#aladin", {{
     target: "{ra} {dec}", fov: {fov:.3f}, survey: "{ALADIN_SURVEYS[0][0]}",
     showFullscreenControl: true, showLayersControl: false, cooFrame: "ICRSd",
+    realFullscreen: true,
   }});
   aladin.addCatalog(A.catalogFromSimbad({{ra: {ra}, dec: {dec}}}, {fov / 2:.3f}, {{shape: "circle", color: "#7dd3fc", onClick: "showPopup"}}));
   document.getElementById("survey").onchange = e => aladin.setImageSurvey(e.target.value);
@@ -369,10 +370,18 @@ def index_page(df: pd.DataFrame, version: str) -> str:
   </div>
   <div id="wrap">
     <section id="skybox" aria-labelledby="sky-title">
-      <div class="panel-head"><h2 id="sky-title">LMC sky map <span>ICRS</span></h2></div>
-      <svg id="sky" width="460" height="430" role="img" aria-label="LMC SNR sky distribution"></svg>
+      <div class="panel-head">
+        <h2 id="sky-title">LMC Sky Map <span>ICRS</span></h2>
+        <div class="sky-zoom" role="group" aria-label="Zoom sky map">
+          <button type="button" id="zoomOut" title="Zoom out" aria-label="Zoom out">&#8722;</button>
+          <button type="button" id="zoomReset" title="Reset zoom" aria-label="Reset zoom">&#10226;</button>
+          <button type="button" id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+          <button type="button" id="skyFullscreen" title="Full screen" aria-label="Full screen">&#9974;</button>
+        </div>
+      </div>
+      <svg id="sky" viewBox="0 0 460 430" preserveAspectRatio="xMidYMid meet" role="img" aria-label="LMC SNR sky distribution"></svg>
       <div class="map-legend"><span><i class="dot snr"></i>Confirmed</span><span><i class="dot cand"></i>Candidate</span></div>
-      <p class="note">RA increases leftward. Marker size follows angular radius.</p>
+      <p class="note">RA increases leftward. Drag to pan, use +/- to zoom. Marker size follows angular radius. Background: SHASSA H&alpha; (CDS).</p>
     </section>
     <section id="tablebox" aria-label="Sortable object table"><table id="tbl"><thead></thead><tbody></tbody></table></section>
   </div>
@@ -424,26 +433,212 @@ function render(){
     render();});
   drawSky(rows);
 }
+function raLabel(deg){
+  let h=deg/15,hh=Math.floor(h),mm=Math.round((h-hh)*60);
+  if(mm===60){mm=0;hh=(hh+1)%24;}
+  return `$${hh}<tspan baseline-shift="super" font-size="70%">h</tspan>$${String(mm).padStart(2,"0")}<tspan baseline-shift="super" font-size="70%">m</tspan>`;
+}
+// Tangent-plane (gnomonic) projection centred on the data — at this
+// field-of-view (~8 deg) curvature is subtle, but it correctly captures the
+// cos(dec) foreshortening of RA that a naive linear RA/Dec plot ignores.
+const SKY_W=460, SKY_H=430;
+// Plot-box margins: generous on the left (Dec ticks need the room), a
+// slimmer strip at the bottom (RA ticks), and just enough top/right to keep
+// the outermost gridline off the frame — there are no ticks on those edges.
+const SKY_PAD_T=6, SKY_PAD_R=3, SKY_PAD_B=17, SKY_PAD_L=34;
+const SKY_CX=(SKY_PAD_L+SKY_W-SKY_PAD_R)/2, SKY_CY=(SKY_PAD_T+SKY_H-SKY_PAD_B)/2;
+const ZOOM_MIN=1, ZOOM_MAX=8, ZOOM_STEP=1.4;
+let skyTangent=null, skyBaseScale=1, zoomLevel=1, panXi=0, panEta=0, lastSkyRows=[];
+// Static SHASSA Halpha backdrop (CDS hips2fits, TAN projection, fetched once
+// — not a live tile fetch). Tangent point/FOV are pinned to what brand/
+// lmc-shassa-halpha.jpg was fetched with; if the catalog's sky footprint
+// drifts noticeably, re-fetch with matching hips2fits params (hips=CDS/P/
+// SHASSA/H, projection=TAN, coordsys=icrs) and update these constants.
+const BG_IMG_SRC="brand/lmc-shassa-halpha.jpg";
+const BG_RA0=83.58604166666666, BG_DEC0=-68.44430555555556;
+const BG_FOV_W_DEG=15.47, BG_FOV_H_DEG=14.461086956521738;
+function gnomonic(ra,dec,ra0,dec0){
+  const d2r=Math.PI/180;
+  const raR=ra*d2r, decR=dec*d2r, ra0R=ra0*d2r, dec0R=dec0*d2r;
+  const cosc=Math.sin(dec0R)*Math.sin(decR)+Math.cos(dec0R)*Math.cos(decR)*Math.cos(raR-ra0R);
+  const xi=Math.cos(decR)*Math.sin(raR-ra0R)/cosc;
+  const eta=(Math.cos(dec0R)*Math.sin(decR)-Math.sin(dec0R)*Math.cos(decR)*Math.cos(raR-ra0R))/cosc;
+  return [xi,eta];
+}
+function invGnomonic(xi,eta,ra0,dec0){
+  const d2r=Math.PI/180, r2d=180/Math.PI;
+  const ra0R=ra0*d2r, dec0R=dec0*d2r;
+  const rho=Math.hypot(xi,eta);
+  if(rho<1e-12) return [ra0,dec0];
+  const c=Math.atan(rho), sinc=Math.sin(c), cosc=Math.cos(c);
+  const decR=Math.asin(cosc*Math.sin(dec0R)+(eta*sinc*Math.cos(dec0R))/rho);
+  const raR=ra0R+Math.atan2(xi*sinc, rho*Math.cos(dec0R)*cosc-eta*Math.sin(dec0R)*sinc);
+  return [raR*r2d, decR*r2d];
+}
+// Dec ticks in sexagesimal (deg / arcmin), matching the RA h/m convention.
+function decLabel(deg){
+  const sign=deg<0?"-":"";
+  const a=Math.abs(deg);
+  let dd=Math.floor(a), mm=Math.round((a-dd)*60);
+  if(mm===60){mm=0;dd+=1;}
+  return `$${sign}$${dd}<tspan baseline-shift="super" font-size="70%">&#176;</tspan>$${String(mm).padStart(2,"0")}<tspan baseline-shift="super" font-size="70%">&#8242;</tspan>`;
+}
+// Candidate gridline steps in degrees, chosen so labels land on round
+// hour/minute (RA) or degree/arcmin (Dec) values; the smallest one that
+// keeps adjacent labels legibly spaced (given the current zoom) is used.
+const RA_STEPS_DEG=[0.25,0.5,1.25,2.5,3.75,5,7.5,15,30];
+const DEC_STEPS_DEG=[1/60,2/60,5/60,10/60,0.25,1/3,0.5,1,2,5];
+function pickStep(candidates,spacingPx,minPx){
+  for(const step of candidates) if(spacingPx(step)>=minPx) return step;
+  return candidates[candidates.length-1];
+}
+function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
+function initSkyProjection(){
+  const ras=DATA.map(d=>d.ra), decs=DATA.map(d=>d.dec);
+  const r0=Math.min(...ras)-.5, r1=Math.max(...ras)+.5;
+  const d0=Math.min(...decs)-.3, d1=Math.max(...decs)+.3;
+  const ra0=(r0+r1)/2, dec0=(d0+d1)/2;
+  const corners=[[r0,d0],[r0,d1],[r1,d0],[r1,d1]].map(([ra,de])=>gnomonic(ra,de,ra0,dec0));
+  const xis=corners.map(c=>c[0]), etas=corners.map(c=>c[1]);
+  const xiRange=Math.max(...xis)-Math.min(...xis), etaRange=Math.max(...etas)-Math.min(...etas);
+  const scaleX=(SKY_W-SKY_PAD_L-SKY_PAD_R)/xiRange, scaleY=(SKY_H-SKY_PAD_T-SKY_PAD_B)/etaRange;
+  skyTangent={ra0,dec0,xiRange,etaRange};
+  skyBaseScale=Math.min(scaleX,scaleY);
+}
+function updateZoomButtons(){
+  document.getElementById("zoomOut").disabled=zoomLevel<=ZOOM_MIN+1e-6;
+  document.getElementById("zoomIn").disabled=zoomLevel>=ZOOM_MAX-1e-6;
+}
+function zoomSky(factor){
+  zoomLevel=Math.min(ZOOM_MAX,Math.max(ZOOM_MIN,zoomLevel*factor));
+  updateZoomButtons();
+  drawSky(lastSkyRows);
+}
 function drawSky(rows){
+  if(!skyTangent) initSkyProjection();
+  lastSkyRows=rows;
   const svg=document.getElementById("sky");
-  const W=460,H=430,P=34;
-  const ras=DATA.map(d=>d.ra),decs=DATA.map(d=>d.dec);
-  const r0=Math.min(...ras)-.5,r1=Math.max(...ras)+.5;
-  const d0=Math.min(...decs)-.3,d1=Math.max(...decs)+.3;
-  const x=ra=>P+(r1-ra)/(r1-r0)*(W-2*P), y=de=>H-P-(de-d0)/(d1-d0)*(H-2*P);
-  let s="";
-  for(let g=Math.ceil(r0/2)*2;g<=r1;g+=2)
-    s+=`<line x1="$${x(g)}" y1="$${P}" x2="$${x(g)}" y2="$${H-P}" stroke="var(--grid)"/>`+
-       `<text x="$${x(g)}" y="$${H-P+14}" fill="var(--muted)" font-size="10" text-anchor="middle">$${g} deg</text>`;
-  for(let g=Math.ceil(d0);g<=d1;g+=2)
-    s+=`<line x1="$${P}" y1="$${y(g)}" x2="$${W-P}" y2="$${y(g)}" stroke="var(--grid)"/>`+
-       `<text x="$${P-4}" y="$${y(g)+3}" fill="var(--muted)" font-size="10" text-anchor="end">$${g} deg</text>`;
-  s+=rows.map(d=>{
+  const {ra0,dec0}=skyTangent;
+  const scale=skyBaseScale*zoomLevel, cx=SKY_CX, cy=SKY_CY;
+  const toPx=(ra,de)=>{
+    const [xi,eta]=gnomonic(ra,de,ra0,dec0);
+    return [cx-(xi-panXi)*scale, cy-(eta-panEta)*scale];
+  };
+  const fromPx=(px,py)=>{
+    const xi=(cx-px)/scale+panXi, eta=(cy-py)/scale+panEta;
+    return invGnomonic(xi,eta,ra0,dec0);
+  };
+  // Visible RA/Dec bounds of the plot box at the current pan/zoom (approximate
+  // via its four corners — fine at this field-of-view) drive which gridlines
+  // are drawn, so ticks never crowd together or run off unseen at high zoom.
+  const boxCorners=[[SKY_PAD_L,SKY_PAD_T],[SKY_PAD_L,SKY_H-SKY_PAD_B],
+      [SKY_W-SKY_PAD_R,SKY_PAD_T],[SKY_W-SKY_PAD_R,SKY_H-SKY_PAD_B]]
+    .map(([px,py])=>fromPx(px,py));
+  const raVals=boxCorners.map(c=>c[0]), decVals=boxCorners.map(c=>c[1]);
+  const r0vis=Math.min(...raVals), r1vis=Math.max(...raVals);
+  const d0vis=Math.min(...decVals), d1vis=Math.max(...decVals);
+  const raC=(r0vis+r1vis)/2, decC=(d0vis+d1vis)/2;
+  // Spacing is checked at the row/column where the ticks are actually drawn
+  // (the plot-box edges), not the view centre, since gnomonic foreshortening
+  // varies across the box and centre-only sampling under-estimates crowding
+  // near the edges.
+  const raStep=pickStep(RA_STEPS_DEG, s=>Math.abs(toPx(raC+s,d0vis)[0]-toPx(raC,d0vis)[0]), 66);
+  const decStep=pickStep(DEC_STEPS_DEG, s=>Math.abs(toPx(r1vis,decC+s)[1]-toPx(r1vis,decC)[1]), 30);
+
+  const N=10;
+  const gridPath=pts=>pts.map((p,i)=>(i===0?"M":"L")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+  const bgW=BG_FOV_W_DEG*Math.PI/180*scale, bgH=BG_FOV_H_DEG*Math.PI/180*scale;
+  const [bgCx,bgCy]=toPx(BG_RA0,BG_DEC0);
+
+  // Map content (backdrop, grid, markers) is clipped to the plot box; tick
+  // labels are drawn afterwards, outside the clip, in the fixed margin —
+  // they stay put and legible instead of panning/zooming out of view.
+  let mapLayer=`<image href="$${BG_IMG_SRC}" x="$${(bgCx-bgW/2).toFixed(1)}" y="$${(bgCy-bgH/2).toFixed(1)}" `+
+    `width="$${bgW.toFixed(1)}" height="$${bgH.toFixed(1)}" preserveAspectRatio="none" opacity="0.85"/>`;
+  let labels="";
+
+  for(let i=0;;i++){
+    const g=Math.ceil(r0vis/raStep)*raStep+i*raStep;
+    if(g>r1vis+1e-9) break;
+    const pts=[]; for(let k=0;k<=N;k++) pts.push(toPx(g,d0vis+(d1vis-d0vis)*k/N));
+    mapLayer+=`<path d="$${gridPath(pts)}" fill="none" stroke="rgba(255,255,255,.32)"/>`;
+    labels+=`<text x="$${toPx(g,d0vis)[0].toFixed(1)}" y="$${SKY_H-SKY_PAD_B+12}" fill="rgba(232,228,219,.92)" font-size="10" text-anchor="middle">$${raLabel(g)}</text>`;
+  }
+  for(let i=0;;i++){
+    const g=Math.ceil(d0vis/decStep)*decStep+i*decStep;
+    if(g>d1vis+1e-9) break;
+    const pts=[]; for(let k=0;k<=N;k++) pts.push(toPx(r0vis+(r1vis-r0vis)*k/N,g));
+    mapLayer+=`<path d="$${gridPath(pts)}" fill="none" stroke="rgba(255,255,255,.32)"/>`;
+    labels+=`<text x="$${SKY_PAD_L-6}" y="$${(toPx(r1vis,g)[1]+3).toFixed(1)}" fill="rgba(232,228,219,.92)" font-size="10" text-anchor="end">$${decLabel(g)}</text>`;
+  }
+  mapLayer+=rows.map(d=>{
     const rad=Math.max(2,Math.min(9,(d.r_arcmin||1.5)*1.6));
     const col=d.klass==="SNR"?"var(--snr)":"var(--cand)";
-    return `<a href="objects/$${d.slug}.html"><circle cx="$${x(d.ra)}" cy="$${y(d.dec)}" r="$${rad}"
+    const [px,py]=toPx(d.ra,d.dec);
+    return `<a href="objects/$${d.slug}.html"><circle cx="$${px.toFixed(1)}" cy="$${py.toFixed(1)}" r="$${rad}"
       fill="$${col}" fill-opacity="0.86" stroke="#faf8f3" stroke-width="1.4"><title>$${d.id}</title></circle></a>`;}).join("");
-  svg.innerHTML=s;
+
+  svg.innerHTML=`<rect x="0" y="0" width="$${SKY_W}" height="$${SKY_H}" fill="#0b0d12"/>`+
+    `<defs><clipPath id="skyClip"><rect x="$${SKY_PAD_L}" y="$${SKY_PAD_T}" width="$${SKY_W-SKY_PAD_L-SKY_PAD_R}" height="$${SKY_H-SKY_PAD_T-SKY_PAD_B}"/></clipPath></defs>`+
+    `<g clip-path="url(#skyClip)">$${mapLayer}</g>$${labels}`;
+}
+document.getElementById("zoomIn").onclick=()=>zoomSky(ZOOM_STEP);
+document.getElementById("zoomOut").onclick=()=>zoomSky(1/ZOOM_STEP);
+document.getElementById("zoomReset").onclick=()=>{
+  zoomLevel=1; panXi=0; panEta=0; updateZoomButtons(); drawSky(lastSkyRows);
+};
+{
+  const skyEl=document.getElementById("sky");
+  let dragging=false, dragMoved=false, captured=false, dragStartPt=null, dragStartPan=null;
+  const svgPoint=e=>{
+    const pt=skyEl.createSVGPoint();
+    pt.x=e.clientX; pt.y=e.clientY;
+    return pt.matrixTransform(skyEl.getScreenCTM().inverse());
+  };
+  skyEl.addEventListener("pointerdown",e=>{
+    if(e.button>0) return;
+    dragging=true; dragMoved=false; captured=false;
+    dragStartPt=svgPoint(e);
+    dragStartPan={x:panXi,y:panEta};
+    // Note: capture is deferred until an actual drag (see pointermove) so a
+    // plain click still reaches the marker's <a> link and navigates.
+  });
+  skyEl.addEventListener("pointermove",e=>{
+    if(!dragging||!skyTangent) return;
+    const p=svgPoint(e);
+    const dxPx=p.x-dragStartPt.x, dyPx=p.y-dragStartPt.y;
+    if(!dragMoved && (Math.abs(dxPx)>3||Math.abs(dyPx)>3)){
+      dragMoved=true;
+      try{ skyEl.setPointerCapture(e.pointerId); captured=true; }catch(_){}
+    }
+    if(!dragMoved) return;
+    const scale=skyBaseScale*zoomLevel;
+    panXi=clamp(dragStartPan.x+dxPx/scale, -skyTangent.xiRange, skyTangent.xiRange);
+    panEta=clamp(dragStartPan.y+dyPx/scale, -skyTangent.etaRange, skyTangent.etaRange);
+    drawSky(lastSkyRows);
+  });
+  const endDrag=e=>{
+    if(!dragging) return;
+    dragging=false;
+    if(captured && skyEl.hasPointerCapture(e.pointerId)) skyEl.releasePointerCapture(e.pointerId);
+    captured=false;
+  };
+  skyEl.addEventListener("pointerup",endDrag);
+  skyEl.addEventListener("pointercancel",endDrag);
+  skyEl.addEventListener("click",e=>{
+    if(dragMoved){ e.preventDefault(); e.stopPropagation(); dragMoved=false; }
+  },true);
+  document.getElementById("skyFullscreen").onclick=()=>{
+    const box=document.getElementById("skybox");
+    if(!document.fullscreenElement) box.requestFullscreen(); else document.exitFullscreen();
+  };
+  document.addEventListener("fullscreenchange",()=>{
+    const btn=document.getElementById("skyFullscreen");
+    const active=document.fullscreenElement===document.getElementById("skybox");
+    btn.title=active?"Exit full screen":"Full screen";
+    btn.setAttribute("aria-label",btn.title);
+    drawSky(lastSkyRows);
+  });
 }
 ["q","fclass","ftype"].forEach(id=>document.getElementById(id).oninput=render);
 document.getElementById("clear").onclick=()=>{
@@ -620,9 +815,41 @@ button:hover, input:focus, select:focus { border-color:var(--snr); outline:none;
 .count { margin-left:auto; color:var(--ink); font-weight:750; padding:9px 0; white-space:nowrap; }
 #wrap { display:grid; grid-template-columns:minmax(340px, 470px) minmax(0,1fr); min-height:560px; min-width:0; }
 #skybox { border-right:1px solid var(--line); padding:0; background:linear-gradient(180deg,#fffdfa 0%,#faf8f3 100%); min-width:0; }
-.panel-head { padding:13px 16px; border-bottom:1px solid var(--line); }
+.panel-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:13px 16px; border-bottom:1px solid var(--line); }
 .panel-head h2 span { color:var(--faint); font:700 11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; margin-left:6px; }
-#sky { display:block; width:100%; height:auto; max-height:430px; }
+.sky-zoom { display:flex; gap:4px; }
+.sky-zoom button { height:26px; width:28px; padding:0; font-size:15px; font-weight:700; line-height:1; }
+.sky-zoom button:disabled { opacity:.35; cursor:not-allowed; }
+#sky {
+  display:block; width:100%; height:auto; max-height:430px; aspect-ratio:460/430;
+  background:#0b0d12; border-radius:2px; cursor:grab; touch-action:none;
+  user-select:none; -webkit-user-select:none; -moz-user-select:none; -ms-user-select:none;
+}
+#sky:active { cursor:grabbing; }
+#sky a { cursor:pointer; }
+#sky circle { transition:stroke-width .12s ease, filter .12s ease; }
+#sky a:hover circle, #sky a:focus circle { stroke:#f2b705; stroke-width:3; filter:drop-shadow(0 0 3px #f2b705); }
+/* Fullscreen: the SVG (now viewBox-scaled) is sized to the largest 460:430
+   box that fits once the header/legend/note rows are subtracted from the
+   viewport height, then the whole stack is centred. --fs-w is that width;
+   the surrounding rows share it so everything stays column-aligned. */
+#skybox:fullscreen, #skybox:-webkit-full-screen {
+  --fs-w:min(96vw, calc((100vh - 190px) * 1.069767));
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:#0b0d12; padding:24px; gap:10px;
+}
+#skybox:fullscreen .panel-head, #skybox:-webkit-full-screen .panel-head {
+  width:var(--fs-w); border-bottom-color:#232733;
+}
+#skybox:fullscreen #sky-title, #skybox:-webkit-full-screen #sky-title { color:#e8e4db; }
+#skybox:fullscreen .sky-zoom button, #skybox:-webkit-full-screen .sky-zoom button { background:#1b1e27; color:#e8e4db; border-color:#333c4d; }
+#skybox:fullscreen #sky, #skybox:-webkit-full-screen #sky {
+  width:var(--fs-w); height:auto; max-height:none; margin:0;
+}
+#skybox:fullscreen .map-legend, #skybox:-webkit-full-screen .map-legend,
+#skybox:fullscreen .note, #skybox:-webkit-full-screen .note {
+  width:var(--fs-w); color:#b9b4a6;
+}
 .map-legend { display:flex; gap:16px; align-items:center; padding:8px 16px 0; color:var(--muted); font-size:12px; }
 .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:-1px; }
 .dot.snr { background:var(--snr); }
@@ -660,6 +887,7 @@ th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacin
 .objgrid { display:grid; grid-template-columns:minmax(360px,1.05fr) minmax(360px,.95fr); gap:18px; }
 .viewer-panel { padding:12px; }
 #aladin { border-radius:6px; overflow:hidden; background:#111; }
+#aladin.aladin-fullscreen { z-index:999; }
 .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0; }
 .linkrow { display:flex; gap:10px; margin:10px 0 2px; flex-wrap:wrap; }
 .linkrow a { border:1px solid var(--line); border-radius:6px; padding:6px 9px; background:var(--surface); font-size:13px; font-weight:650; }
@@ -727,7 +955,7 @@ def main() -> None:
     (out / "brand").mkdir(parents=True, exist_ok=True)
 
     (out / "style.css").write_text(STYLE, encoding="utf-8")
-    for asset in ("logo-mark.svg", "logo-lockup.svg", "favicon.svg"):
+    for asset in ("logo-mark.svg", "logo-lockup.svg", "favicon.svg", "lmc-shassa-halpha.jpg"):
         shutil.copy(Path("brand") / asset, out / "brand" / asset)
     (out / "index.html").write_text(index_page(df, version), encoding="utf-8")
     (out / "about.html").write_text(about_page(version), encoding="utf-8")
