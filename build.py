@@ -1,16 +1,16 @@
-﻿"""Static-site generator for the LMC Supernova Remnant Catalog.
+"""Static-site generator for the LMC Supernova Remnant Catalog.
 
 Reads the versioned extended catalog CSV (produced by VLMism
 scripts/01_build_lmc_master.py) and emits a complete static website:
 
     site/
-    â”œâ”€â”€ index.html            searchable/sortable census + sky map
-    â”œâ”€â”€ about.html            classification criteria, history, citation
-    â”œâ”€â”€ objects/<slug>.html   one page per object (Aladin Lite multiwavelength
-    â”‚                         viewer + properties + external services)
-    â”œâ”€â”€ catalog.json          machine-readable download
-    â”œâ”€â”€ catalog.csv           same, CSV
-    â””â”€â”€ style.css
+    ├── index.html            searchable/sortable census + sky map
+    ├── about.html            classification criteria, history, citation
+    ├── objects/<slug>.html   one page per object (Aladin Lite multiwavelength
+    │                         viewer + properties + external services)
+    ├── catalog.json          machine-readable download
+    ├── catalog.csv           same, CSV
+    └── style.css
 
 Usage:
     python build.py --catalog data/lmc_snrs_extended_v2.csv --out site
@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import shutil
 from pathlib import Path
 from string import Template
@@ -40,11 +41,11 @@ VERSION_NOTE = "Maintained by V. Shukla; assembled from the literature (see Abou
 #: HiPS surveys offered in the per-object viewer. Entries are either CDS
 #: registry IDs (verify at https://aladin.cds.unistra.fr/hips/list) or direct
 #: HiPS base URLs (for maps not registered at CDS, e.g. the MPE-hosted
-#: eROSITA DR1 HiPS). All verified working 2026-07-08 â€” see
-#: VLMism/docs/DATA_SOURCING.md Â§4 for provenance.
+#: eROSITA DR1 HiPS). All verified working 2026-07-08 – see
+#: VLMism/docs/DATA_SOURCING.md §4 for provenance.
 ALADIN_SURVEYS = [
     ("CDS/P/DSS2/color", "DSS2 optical"),
-    ("CDS/P/SHASSA/H", "SHASSA HÎ±"),
+    ("CDS/P/SHASSA/H", "SHASSA Hα"),
     ("https://erosita.mpe.mpg.de/dr1/erodat/static/hips/eRASS1_RGB_Rate_c010/",
      "eROSITA DR1 X-ray (RGB)"),
     ("ESDC/P/XMM/EPIC-RGB", "XMM-Newton EPIC (RGB)"),
@@ -58,11 +59,11 @@ ALADIN_SURVEYS = [
 #: Cutout PNG bands shown on object pages (when images/<slug>/ exists),
 #: in display order: (band suffix, label).
 IMAGE_BANDS = [
-    ("rgb", "Composite (R radio / G HÎ± / B X-ray)"),
-    ("xray_soft", "eROSITA 0.2â€“2.3 keV"),
-    ("halpha", "HÎ± (DeMCELS)"),
+    ("rgb", "Composite (R radio / G Hα / B X-ray)"),
+    ("xray_soft", "eROSITA 0.2–2.3 keV"),
+    ("halpha", "Hα (DeMCELS)"),
     ("sii", "[S II] (DeMCELS)"),
-    ("sii_halpha_ratio", "[S II]/HÎ± ratio"),
+    ("sii_halpha_ratio", "[S II]/Hα ratio"),
     ("radio_888", "ASKAP 888 MHz"),
 ]
 
@@ -71,40 +72,40 @@ PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("id", "Catalog ID", ""),
         ("alias", "Alias / common name", ""),
         ("klass", "Status", ""),
-        ("sn_type", "SN type", "Ia = thermonuclear, CC = core collapse; '?' = tentative"),
+        ("sn_type", "SN type", "('?' = tentative)"),
         ("ref_discovery", "Discovery ref", ""),
-        ("ref_confirm", "Confirmation ref", "reference that promoted candidate â†’ confirmed"),
+        ("ref_confirm", "Confirmation ref", ""),
     ]),
     ("Position (ICRS)", [
         ("ra", "RA [deg]", ""),
         ("dec", "Dec [deg]", ""),
     ]),
-    ("Morphology", [
+    ("Morphology (Zangrandi+24, Shukla 24)", [
         ("size_maj_arcmin", "Major axis [arcmin]", ""),
         ("size_min_arcmin", "Minor axis [arcmin]", ""),
         ("d_arcmin", "Mean diameter [arcmin]", ""),
         ("d_pc", "Diameter [pc]", "at 50 kpc"),
         ("pa_deg", "Position angle [deg]", ""),
         ("shape", "Fitted shape", ""),
-        ("ovality", "Ovality", "Zangrandi+24 convention"),
+        ("ovality", "Ovality", ""),
         ("eccentricity", "Eccentricity", ""),
     ]),
     ("X-ray (eROSITA / XMM)", [
-        ("xray_rate_ctss", "eRASS rate [cts/s]", "upper limit if flagged"),
-        ("xray_rate_err", "Rate error", ""),
-        ("lx_1e35", "L_X [10^35 erg/s]", "Maggi+16, 0.3-8 keV"),
-        ("nh_1e21", "N_H [10^21 cm^-2]", "Maggi+16"),
-        ("age_kyr", "Age [kyr]", "Maggi+16"),
+        ("xray_rate_ctss", "eRASS rate [cts/s]", "(Zangrandi+24)"),
+        ("xray_rate_err", "Rate error", "(Zangrandi+24)"),
+        ("lx_1e35", "L_X [10^35 erg/s]", "(Maggi+16, 0.3-8 keV)"),
+        ("nh_1e21", "N_H [10^21 cm^-2]", "(Maggi+16)"),
+        ("age_kyr", "Age [kyr]", "(Maggi+16)"),
     ]),
     ("Radio (Bozzetto+17)", [
-        ("alpha_radio", "Spectral index Î±", "S_Î½ âˆ Î½^Î±; Î± < -0.4 non-thermal"),
-        ("alpha_radio_err", "Î± error", ""),
+        ("alpha_radio", "Spectral index α", ""),
+        ("alpha_radio_err", "α error", ""),
         ("s_1ghz_jy", "S_1GHz [Jy]", ""),
     ]),
     ("Energetics (Leahy 17)", [
-        ("e0_1e51_erg", "E0 [10^51 erg]", ""),
+        ("e0_1e51_erg", "E_0 [10^51 erg]", ""),
         ("age_l17_yr", "Age [yr]", ""),
-        ("n0_cm3", "n0 [cm^-3]", ""),
+        ("n0_cm3", "n_0 [cm^-3]", ""),
     ]),
 ]
 
@@ -198,9 +199,22 @@ def slugify(obj_id: str) -> str:
     return obj_id.replace(" ", "_").replace("/", "-")
 
 
+#: Matches `^exponent` (e.g. "10^35", "cm^-2") and `_subscript` (e.g. "L_X",
+#: "S_1GHz") tokens in property labels/notes so they render as real
+#: super/subscripts instead of literal carets and underscores.
+_SUPERSCRIPT_RE = re.compile(r"\^(-?[A-Za-z0-9.]+)")
+_SUBSCRIPT_RE = re.compile(r"_([A-Za-z0-9.]+)")
+
+
+def mathify(text: str) -> str:
+    text = _SUPERSCRIPT_RE.sub(r"<sup>\1</sup>", text)
+    text = _SUBSCRIPT_RE.sub(r"<sub>\1</sub>", text)
+    return text
+
+
 def fmt(v: object, nd: int = 3) -> str:
     if v is None or (isinstance(v, float) and np.isnan(v)):
-        return "â€”"
+        return "—"
     if isinstance(v, bool):
         return "yes" if v else "no"
     if isinstance(v, float):
@@ -214,13 +228,13 @@ def load_image_manifest(images_dir: Path) -> dict[str, dict]:
     Expects the layout written by VLMism ``scripts/04_build_snr_images.py``:
     ``images/<slug>/<slug>_<band>.png`` plus ``images/manifest.csv``. Returns
     ``{slug: {band: {"file": ..., "survey": ..., "viz_grade": bool}}}``.
-    Missing directory â†’ empty dict (the site builds fine without images).
+    Missing directory → empty dict (the site builds fine without images).
     """
     out: dict[str, dict] = {}
     manifest = images_dir / "manifest.csv"
     if not manifest.exists():
         if images_dir.exists():
-            logger.warning("%s exists but has no manifest.csv â€” ignoring", images_dir)
+            logger.warning("%s exists but has no manifest.csv — ignoring", images_dir)
         return out
     df = pd.read_csv(manifest)
     for _, r in df.iterrows():
@@ -253,7 +267,7 @@ def images_panel(slug: str, obj_images: dict) -> str:
 <section class="cutouts"><h3>Multiwavelength cutouts</h3>
 <div class="cutgrid">{cards}</div>
 <p class="note">Pipeline-generated cutouts (asinh stretch). "quick-look" =
-hips2fits fallback, visualization grade only â€” do not measure fluxes on
+hips2fits fallback, visualization grade only — do not measure fluxes on
 these. Provenance: <a href="../images/manifest.csv">images/manifest.csv</a>;
 pipeline: <a href="https://github.com/whyvav/VLMism">VLMism</a>.</p>
 </section>"""
@@ -270,12 +284,14 @@ def object_page(row: pd.Series, version: str,
     for gname, fields in PROPERTY_GROUPS:
         rows_html = ""
         for key, label, note in fields:
-            val = fmt(row.get(key))
-            if key == "xray_rate_ctss" and row.get("xray_rate_is_upper_limit"):
+            raw = row.get(key)
+            val = fmt(raw)
+            if (key == "xray_rate_ctss" and row.get("xray_rate_is_upper_limit")
+                    and not (isinstance(raw, float) and np.isnan(raw))):
                 val = f"&lt; {val}"
-            note_html = f'<span class="note">{note}</span>' if note else ""
-            rows_html += f"<tr><th>{label}{note_html}</th><td>{val}</td></tr>"
-        groups_html += f"<section><h3>{gname}</h3><table>{rows_html}</table></section>"
+            note_html = f'<span class="note">{mathify(note)}</span>' if note else ""
+            rows_html += f"<tr><th>{mathify(label)}{note_html}</th><td>{val}</td></tr>"
+        groups_html += f"<section><h3>{mathify(gname)}</h3><table>{rows_html}</table></section>"
 
     thesis_note = row.get("thesis_note")
     banner = (
@@ -296,7 +312,7 @@ def object_page(row: pd.Series, version: str,
     <div id="aladin" style="width:100%;height:420px"></div>
     <div class="controls">
       <label>Survey <select id="survey">{options}</select></label>
-      <span class="note">FoV {fov:.2f}Â° Â· drag / scroll to explore</span>
+      <span class="note">FoV {fov:.2f}° · drag / scroll to explore</span>
     </div>
     <div class="linkrow">
       <a href="https://simbad.cds.unistra.fr/simbad/sim-coo?Coord={ra}+{dec}&Radius=2&Radius.unit=arcmin" target="_blank">SIMBAD</a>
@@ -320,7 +336,7 @@ A.init.then(() => {{
 }});
 </script>"""
     return PAGE.substitute(
-        title=f"{row['id']} â€” {SITE_NAME}", root="..", site_name=SITE_NAME,
+        title=f"{row['id']} — {SITE_NAME}", root="..", site_name=SITE_NAME,
         body=body, version=version, version_note=VERSION_NOTE, head_extra="",
     )
 
@@ -448,14 +464,14 @@ def about_page(version: str) -> str:
     body = """
 <h1>About this catalog</h1>
 <p>This is a living, literature-consolidated census of supernova remnants in
-the Large Magellanic Cloud â€” intended as the LMC counterpart to
+the Large Magellanic Cloud — intended as the LMC counterpart to
 <a href="https://www.mrao.cam.ac.uk/surveys/snrs/">Green's Galactic SNR
 catalog</a> and <a href="http://snrcat.physics.umanitoba.ca/">SNRcat</a>.</p>
 <h3>Classification criteria</h3>
 <p>An object is a <strong>confirmed SNR</strong> when it satisfies at least
-two of the three classical criteria (FilipoviÄ‡ et al. 1998; Bozzetto et al.
-2017): (1) non-thermal radio spectral index Î± &lt; âˆ’0.4; (2) diffuse X-ray
-emission; (3) shock-enhanced [S II]/HÎ± â‰¥ 0.4. One criterion â†’ candidate.</p>
+two of the three classical criteria (Filipović et al. 1998; Bozzetto et al.
+2017): (1) non-thermal radio spectral index α &lt; −0.4; (2) diffuse X-ray
+emission; (3) shock-enhanced [S II]/Hα ≥ 0.4. One criterion → candidate.</p>
 <h3>Sources</h3>
 <ul>
 <li>Maggi et al. 2016, A&amp;A 585, A162 (XMM-Newton X-ray population)</li>
@@ -482,10 +498,10 @@ emission; (3) shock-enhanced [S II]/HÎ± â‰¥ 0.4. One criterion â†’ ca
 }</code></pre>
 <h3>Imagery</h3>
 <p>Object pages stream survey imagery client-side via
-<a href="https://aladin.cds.unistra.fr/">Aladin Lite</a> (DSS2, SHASSA HÎ±,
+<a href="https://aladin.cds.unistra.fr/">Aladin Lite</a> (DSS2, SHASSA Hα,
 eROSITA-DE DR1, XMM-Newton EPIC, RACS-low, SUMSS, GALEX, AllWISE, 2MASS
-HiPS), and â€” where generated â€” show pipeline cutout PNGs (eROSITA-DE DR1
-X-ray, DeMCELS DR1 HÎ± &amp; [S II], ASKAP-EMU 888 MHz) built by the
+HiPS), and — where generated — show pipeline cutout PNGs (eROSITA-DE DR1
+X-ray, DeMCELS DR1 Hα &amp; [S II], ASKAP-EMU 888 MHz) built by the
 <a href="https://github.com/whyvav/VLMism">VLMism</a> pipeline, with
 per-file provenance in <a href="images/manifest.csv">images/manifest.csv</a>.
 Credits: eROSITA-DE (Merloni et al. 2024); DeMCELS (Points et al. 2024,
@@ -494,11 +510,11 @@ NSF NOIRLab); ASKAP-EMU (Pennock et al. 2021, CSIRO/CASDA); SHASSA
 <a href="https://alasky.cds.unistra.fr/hips-image-services/hips2fits">CDS
 hips2fits</a> and are for visualization only.</p>
 <h3>Data &amp; feedback</h3>
-<p>Download: <a href="catalog.csv">CSV</a> Â· <a href="catalog.json">JSON</a> Â·
+<p>Download: <a href="catalog.csv">CSV</a> · <a href="catalog.json">JSON</a> ·
 cutout images <a href="images/manifest.csv">manifest</a>.
 Corrections and new-object reports: open an issue on the repository.</p>"""
     return PAGE.substitute(
-        title=f"About â€” {SITE_NAME}", root=".", site_name=SITE_NAME, body=body,
+        title=f"About — {SITE_NAME}", root=".", site_name=SITE_NAME, body=body,
         version=version, version_note=VERSION_NOTE, head_extra="",
     )
 
@@ -524,6 +540,9 @@ STYLE = """
   --shadow:0 18px 45px rgba(33,31,26,.08);
 }
 * { box-sizing:border-box; }
+sup, sub { font-size:75%; line-height:0; position:relative; vertical-align:baseline; }
+sup { top:-0.5em; }
+sub { bottom:-0.25em; }
 html { color-scheme:light; }
 body {
   margin:0;
@@ -647,6 +666,7 @@ th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacin
 .property-stack { display:grid; gap:10px; }
 .property-stack section { padding:12px; box-shadow:none; }
 .property-stack table th { width:56%; color:var(--muted); font-weight:650; text-transform:none; letter-spacing:0; font-size:12px; }
+.property-stack table th .note { margin-left:6px; }
 pre { padding:14px; overflow-x:auto; font-size:12px; box-shadow:none; }
 ul { padding-left:22px; }
 .cutouts { padding:14px; margin-top:18px; }
