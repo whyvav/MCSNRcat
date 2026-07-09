@@ -1,16 +1,16 @@
-"""Static-site generator for the LMC Supernova Remnant Catalog.
+﻿"""Static-site generator for the LMC Supernova Remnant Catalog.
 
 Reads the versioned extended catalog CSV (produced by VLMism
 scripts/01_build_lmc_master.py) and emits a complete static website:
 
     site/
-    ├── index.html            searchable/sortable census + sky map
-    ├── about.html            classification criteria, history, citation
-    ├── objects/<slug>.html   one page per object (Aladin Lite multiwavelength
-    │                         viewer + properties + external services)
-    ├── catalog.json          machine-readable download
-    ├── catalog.csv           same, CSV
-    └── style.css
+    â”œâ”€â”€ index.html            searchable/sortable census + sky map
+    â”œâ”€â”€ about.html            classification criteria, history, citation
+    â”œâ”€â”€ objects/<slug>.html   one page per object (Aladin Lite multiwavelength
+    â”‚                         viewer + properties + external services)
+    â”œâ”€â”€ catalog.json          machine-readable download
+    â”œâ”€â”€ catalog.csv           same, CSV
+    â””â”€â”€ style.css
 
 Usage:
     python build.py --catalog data/lmc_snrs_extended_v2.csv --out site
@@ -33,17 +33,18 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-SITE_NAME = "MCSNRcat"
+SITE_NAME = "MCSNRcat^log"
+SITE_CANONICAL_NAME = "MCSNRcatalog"
 VERSION_NOTE = "Maintained by V. Shukla; assembled from the literature (see About)."
 
 #: HiPS surveys offered in the per-object viewer. Entries are either CDS
 #: registry IDs (verify at https://aladin.cds.unistra.fr/hips/list) or direct
 #: HiPS base URLs (for maps not registered at CDS, e.g. the MPE-hosted
-#: eROSITA DR1 HiPS). All verified working 2026-07-08 — see
-#: VLMism/docs/DATA_SOURCING.md §4 for provenance.
+#: eROSITA DR1 HiPS). All verified working 2026-07-08 â€” see
+#: VLMism/docs/DATA_SOURCING.md Â§4 for provenance.
 ALADIN_SURVEYS = [
     ("CDS/P/DSS2/color", "DSS2 optical"),
-    ("CDS/P/SHASSA/H", "SHASSA Hα"),
+    ("CDS/P/SHASSA/H", "SHASSA HÎ±"),
     ("https://erosita.mpe.mpg.de/dr1/erodat/static/hips/eRASS1_RGB_Rate_c010/",
      "eROSITA DR1 X-ray (RGB)"),
     ("ESDC/P/XMM/EPIC-RGB", "XMM-Newton EPIC (RGB)"),
@@ -57,11 +58,11 @@ ALADIN_SURVEYS = [
 #: Cutout PNG bands shown on object pages (when images/<slug>/ exists),
 #: in display order: (band suffix, label).
 IMAGE_BANDS = [
-    ("rgb", "Composite (R radio / G Hα / B X-ray)"),
-    ("xray_soft", "eROSITA 0.2–2.3 keV"),
-    ("halpha", "Hα (DeMCELS)"),
+    ("rgb", "Composite (R radio / G HÎ± / B X-ray)"),
+    ("xray_soft", "eROSITA 0.2â€“2.3 keV"),
+    ("halpha", "HÎ± (DeMCELS)"),
     ("sii", "[S II] (DeMCELS)"),
-    ("sii_halpha_ratio", "[S II]/Hα ratio"),
+    ("sii_halpha_ratio", "[S II]/HÎ± ratio"),
     ("radio_888", "ASKAP 888 MHz"),
 ]
 
@@ -72,7 +73,7 @@ PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("klass", "Status", ""),
         ("sn_type", "SN type", "Ia = thermonuclear, CC = core collapse; '?' = tentative"),
         ("ref_discovery", "Discovery ref", ""),
-        ("ref_confirm", "Confirmation ref", "reference that promoted candidate → confirmed"),
+        ("ref_confirm", "Confirmation ref", "reference that promoted candidate â†’ confirmed"),
     ]),
     ("Position (ICRS)", [
         ("ra", "RA [deg]", ""),
@@ -96,8 +97,8 @@ PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("age_kyr", "Age [kyr]", "Maggi+16"),
     ]),
     ("Radio (Bozzetto+17)", [
-        ("alpha_radio", "Spectral index α", "S_ν ∝ ν^α; α < -0.4 non-thermal"),
-        ("alpha_radio_err", "α error", ""),
+        ("alpha_radio", "Spectral index Î±", "S_Î½ âˆ Î½^Î±; Î± < -0.4 non-thermal"),
+        ("alpha_radio_err", "Î± error", ""),
         ("s_1ghz_jy", "S_1GHz [Jy]", ""),
     ]),
     ("Energetics (Leahy 17)", [
@@ -112,18 +113,31 @@ PAGE = Template("""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>$title</title>
 <link rel="stylesheet" href="$root/style.css">
+<link rel="icon" href="$root/brand/favicon.svg" type="image/svg+xml">
 $head_extra
 </head><body>
-<nav><a href="$root/index.html"><strong>$site_name</strong></a>
-<a href="$root/index.html">Census</a>
-<a href="$root/about.html">About</a>
-<a href="$root/catalog.csv">CSV</a>
-<a href="$root/catalog.json">JSON</a>
-<span class="ver">$version</span></nav>
+<header class="site-header">
+  <a class="brand-lockup" href="$root/index.html" aria-label="$site_name home">
+    <img src="$root/brand/logo-mark.svg" alt="" class="brand-mark" width="80" height="55">
+    <span class="brand-copy">
+      <span class="brand-word">MCSNRcat<span aria-hidden="true">^</span>log</span>
+      <span class="brand-tagline">Magellanic Cloud Supernova Remnant Catalog</span>
+    </span>
+  </a>
+  <nav class="site-nav" aria-label="Primary">
+    <a href="$root/index.html">Census</a>
+    <a href="$root/about.html">About</a>
+    <a href="$root/catalog.csv">CSV</a>
+    <a href="$root/catalog.json">JSON</a>
+  </nav>
+  <span class="ver">Data version: <code>$version</code></span>
+</header>
 <main>$body</main>
-<footer>$version_note Data version: <code>$version</code>.
-Imagery: CDS Aladin Lite / HiPS. Built from the
-<a href="https://github.com/whyvav/MCSNRcat">source on GitHub</a>.</footer>
+<footer class="site-footer">
+  <span>$version_note Data version: <code>$version</code>.</span>
+  <span>Imagery: CDS Aladin Lite / HiPS.</span>
+  <span>Built from the <a href="https://github.com/whyvav/MCSNRcat">source on GitHub</a>.</span>
+</footer>
 </body></html>""")
 
 
@@ -186,7 +200,7 @@ def slugify(obj_id: str) -> str:
 
 def fmt(v: object, nd: int = 3) -> str:
     if v is None or (isinstance(v, float) and np.isnan(v)):
-        return "—"
+        return "â€”"
     if isinstance(v, bool):
         return "yes" if v else "no"
     if isinstance(v, float):
@@ -200,13 +214,13 @@ def load_image_manifest(images_dir: Path) -> dict[str, dict]:
     Expects the layout written by VLMism ``scripts/04_build_snr_images.py``:
     ``images/<slug>/<slug>_<band>.png`` plus ``images/manifest.csv``. Returns
     ``{slug: {band: {"file": ..., "survey": ..., "viz_grade": bool}}}``.
-    Missing directory → empty dict (the site builds fine without images).
+    Missing directory â†’ empty dict (the site builds fine without images).
     """
     out: dict[str, dict] = {}
     manifest = images_dir / "manifest.csv"
     if not manifest.exists():
         if images_dir.exists():
-            logger.warning("%s exists but has no manifest.csv — ignoring", images_dir)
+            logger.warning("%s exists but has no manifest.csv â€” ignoring", images_dir)
         return out
     df = pd.read_csv(manifest)
     for _, r in df.iterrows():
@@ -239,7 +253,7 @@ def images_panel(slug: str, obj_images: dict) -> str:
 <section class="cutouts"><h3>Multiwavelength cutouts</h3>
 <div class="cutgrid">{cards}</div>
 <p class="note">Pipeline-generated cutouts (asinh stretch). "quick-look" =
-hips2fits fallback, visualization grade only — do not measure fluxes on
+hips2fits fallback, visualization grade only â€” do not measure fluxes on
 these. Provenance: <a href="../images/manifest.csv">images/manifest.csv</a>;
 pipeline: <a href="https://github.com/whyvav/VLMism">VLMism</a>.</p>
 </section>"""
@@ -269,14 +283,20 @@ def object_page(row: pd.Series, version: str,
     )
     ra, dec = row["ra"], row["dec"]
     body = f"""
-<h1>{row['id']} <span class="pill {'snr' if row['klass'] == 'SNR' else 'cand'}">{row['klass'].replace('_', ' ')}</span></h1>
+<header class="page-head object-head">
+  <div>
+    <h1>{row['id']}</h1>
+    <p class="lede">{fmt(row.get('alias'))}</p>
+  </div>
+  <span class="status-pill {'snr' if row['klass'] == 'SNR' else 'cand'}">{row['klass'].replace('_', ' ')}</span>
+</header>
 {banner}
 <div class="objgrid">
-  <div>
+  <section class="viewer-panel" aria-label="Multiwavelength sky viewer">
     <div id="aladin" style="width:100%;height:420px"></div>
     <div class="controls">
       <label>Survey <select id="survey">{options}</select></label>
-      <span class="note">FoV {fov:.2f}° · drag / scroll to explore</span>
+      <span class="note">FoV {fov:.2f}Â° Â· drag / scroll to explore</span>
     </div>
     <div class="linkrow">
       <a href="https://simbad.cds.unistra.fr/simbad/sim-coo?Coord={ra}+{dec}&Radius=2&Radius.unit=arcmin" target="_blank">SIMBAD</a>
@@ -284,8 +304,8 @@ def object_page(row: pd.Series, version: str,
       <a href="https://ui.adsabs.harvard.edu/search/q=%22{row['name']}%22%20OR%20%22{row['id']}%22" target="_blank">ADS search</a>
       <a href="https://vizier.cds.unistra.fr/viz-bin/VizieR-4?-c={ra}%20{dec}&-c.rm=2" target="_blank">VizieR cone</a>
     </div>
-  </div>
-  <div>{groups_html}</div>
+  </section>
+  <div class="property-stack">{groups_html}</div>
 </div>
 {images_panel(slugify(row["id"]), obj_images or {})}
 <script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
@@ -300,7 +320,7 @@ A.init.then(() => {{
 }});
 </script>"""
     return PAGE.substitute(
-        title=f"{row['id']} — {SITE_NAME}", root="..", site_name=SITE_NAME,
+        title=f"{row['id']} â€” {SITE_NAME}", root="..", site_name=SITE_NAME,
         body=body, version=version, version_note=VERSION_NOTE, head_extra="",
     )
 
@@ -312,33 +332,57 @@ def index_page(df: pd.DataFrame, version: str) -> str:
     n_snr = int((df["klass"] == "SNR").sum())
     n_cand = int((df["klass"] == "SNR_candidate").sum())
     body = Template("""
-<h1>Supernova remnants in the Large Magellanic Cloud</h1>
-<p class="lede">A living census of all known LMC SNRs —
-<span class="pill snr">$n_snr confirmed</span>
-<span class="pill cand">$n_cand candidates</span> —
-consolidated from X-ray, radio, and optical literature
-(Maggi+16, Bozzetto+17/22, Yew+21, Kavanagh+22, Zangrandi+24, Shukla 24).
-Click any object for a multiwavelength viewer and full properties.</p>
-<div id="controls">
-  <input id="q" placeholder="search id / alias / ref…" size="28">
-  <select id="fclass"><option value="">status: all</option><option value="SNR">confirmed</option><option value="SNR_candidate">candidate</option></select>
-  <select id="ftype"><option value="">type: all</option><option>Ia</option><option>Ia?</option><option>CC</option><option>CC?</option></select>
-  <span class="note" id="count"></span>
-</div>
-<div id="wrap">
-  <div id="skybox"><svg id="sky" width="460" height="430"></svg>
-    <div class="note">RA increases leftward. Marker size ∝ angular radius. Click a marker to open the object page.</div></div>
-  <div id="tablebox"><table id="tbl"><thead></thead><tbody></tbody></table></div>
-</div>
-<script>
+<section class="hero">
+  <div>
+    <h1>Supernova remnants in the Large Magellanic Cloud</h1>
+    <p class="lede">A living, multiwavelength, literature-consolidated census of all known LMC SNRs. Click any object for a multiwavelength viewer, physical properties, and external archive links.</p>
+  </div>
+  <div class="stat-grid" aria-label="Catalog summary">
+    <span class="stat-card"><strong>$n_snr</strong><span>confirmed SNRs</span></span>
+    <span class="stat-card cand"><strong>$n_cand</strong><span>candidates</span></span>
+    <span class="stat-card total"><strong>$n_total</strong><span>total objects</span></span>
+  </div>
+</section>
+<section class="workbench" aria-label="Catalog workbench">
+  <div id="controls">
+    <label class="search-field"><span>Search</span><input id="q" placeholder="ID, alias, reference..." size="28"></label>
+    <label><span>Status</span><select id="fclass"><option value="">All</option><option value="SNR">Confirmed</option><option value="SNR_candidate">Candidate</option></select></label>
+    <label><span>Type</span><select id="ftype"><option value="">All</option><option>Ia</option><option>Ia?</option><option>CC</option><option>CC?</option></select></label>
+    <button type="button" id="clear">Clear</button>
+    <span class="count" id="count"></span>
+  </div>
+  <div id="wrap">
+    <section id="skybox" aria-labelledby="sky-title">
+      <div class="panel-head"><h2 id="sky-title">LMC sky map <span>ICRS</span></h2></div>
+      <svg id="sky" width="460" height="430" role="img" aria-label="LMC SNR sky distribution"></svg>
+      <div class="map-legend"><span><i class="dot snr"></i>Confirmed</span><span><i class="dot cand"></i>Candidate</span></div>
+      <p class="note">RA increases leftward. Marker size follows angular radius.</p>
+    </section>
+    <section id="tablebox" aria-label="Sortable object table"><table id="tbl"><thead></thead><tbody></tbody></table></section>
+  </div>
+</section>
+<section class="coverage" aria-label="Multiwavelength coverage">
+  <h2>Multiwavelength coverage</h2>
+  <div><strong>X-ray</strong><span>eROSITA, XMM-Newton</span></div>
+  <div><strong>Optical</strong><span>DSS2, SHASSA H-alpha, DeMCELS</span></div>
+  <div><strong>Radio</strong><span>RACS, SUMSS, ASKAP</span></div>
+  <div><strong>UV / IR</strong><span>GALEX, AllWISE, 2MASS</span></div>
+</section><script>
 const DATA = $data;
 const COLS = [
  {key:"id",label:"ID"},{key:"klass",label:"Status"},{key:"sn_type",label:"Type"},
- {key:"ra",label:"RA°"},{key:"dec",label:"Dec°"},{key:"r_arcmin",label:"r (')"},
- {key:"d_pc",label:"D (pc)"},{key:"alpha_radio",label:"α radio"},
+ {key:"ra",label:"RA (deg)"},{key:"dec",label:"Dec (deg)"},{key:"r_arcmin",label:"r (')"},
+ {key:"d_pc",label:"D (pc)"},{key:"alpha_radio",label:"alpha radio"},
  {key:"age_kyr",label:"Age (kyr)"},{key:"alias",label:"Alias"},{key:"ref_discovery_code",label:"Ref"}];
 let sortKey="ra", sortAsc=true;
 const fmt=(v,k)=>v==null?"":(typeof v==="number"&&!["ra","dec"].includes(k)?+v.toFixed(2):(typeof v==="number"?+v.toFixed(4):v));
+const statusLabel=v=>v==="SNR"?"confirmed":"candidate";
+const cell=(d,c)=>{
+  if(c.key==="id") return `<td><a href="objects/$${d.slug}.html">$${d.id}</a></td>`;
+  if(c.key==="klass") return `<td><span class="status-pill $${d.klass==="SNR"?"snr":"cand"}">$${statusLabel(d.klass)}</span></td>`;
+  if(c.key==="sn_type" && d[c.key]) return `<td><span class="type-pill">$${d[c.key]}</span></td>`;
+  return `<td>$${fmt(d[c.key],c.key)}</td>`;
+};
 // Sorting by "id" ignores the "MCSNR " prefix (via the bare-coordinate `name`
 // field) so confirmed and candidate SNRs interleave by sky position instead
 // of confirmed objects all sorting after candidates.
@@ -357,9 +401,7 @@ function render(){
   document.getElementById("count").textContent=rows.length+" objects";
   document.querySelector("#tbl thead").innerHTML="<tr>"+COLS.map(c=>
     `<th data-k="$${c.key}">$${c.label}$${sortKey===c.key?(sortAsc?" ▲":" ▼"):""}</th>`).join("")+"</tr>";
-  document.querySelector("#tbl tbody").innerHTML=rows.map(d=>"<tr>"+COLS.map(c=>
-    c.key==="id"?`<td><a href="objects/$${d.slug}.html">$${d.id}</a></td>`
-    :`<td>$${fmt(d[c.key],c.key)}</td>`).join("")+"</tr>").join("");
+  document.querySelector("#tbl tbody").innerHTML=rows.map(d=>"<tr>"+COLS.map(c=>cell(d,c)).join("")+"</tr>").join("");
   document.querySelectorAll("#tbl th[data-k]").forEach(th=>th.onclick=()=>{
     const k=th.dataset.k;
     if(sortKey===k)sortAsc=!sortAsc; else {sortKey=k;sortAsc=true;}
@@ -375,21 +417,27 @@ function drawSky(rows){
   const x=ra=>P+(r1-ra)/(r1-r0)*(W-2*P), y=de=>H-P-(de-d0)/(d1-d0)*(H-2*P);
   let s="";
   for(let g=Math.ceil(r0/2)*2;g<=r1;g+=2)
-    s+=`<line x1="$${x(g)}" y1="$${P}" x2="$${x(g)}" y2="$${H-P}" stroke="#334155"/>`+
-       `<text x="$${x(g)}" y="$${H-P+14}" fill="#94a3b8" font-size="9" text-anchor="middle">$${g}°</text>`;
+    s+=`<line x1="$${x(g)}" y1="$${P}" x2="$${x(g)}" y2="$${H-P}" stroke="var(--grid)"/>`+
+       `<text x="$${x(g)}" y="$${H-P+14}" fill="var(--muted)" font-size="10" text-anchor="middle">$${g} deg</text>`;
   for(let g=Math.ceil(d0);g<=d1;g+=2)
-    s+=`<line x1="$${P}" y1="$${y(g)}" x2="$${W-P}" y2="$${y(g)}" stroke="#334155"/>`+
-       `<text x="$${P-4}" y="$${y(g)+3}" fill="#94a3b8" font-size="9" text-anchor="end">$${g}°</text>`;
+    s+=`<line x1="$${P}" y1="$${y(g)}" x2="$${W-P}" y2="$${y(g)}" stroke="var(--grid)"/>`+
+       `<text x="$${P-4}" y="$${y(g)+3}" fill="var(--muted)" font-size="10" text-anchor="end">$${g} deg</text>`;
   s+=rows.map(d=>{
     const rad=Math.max(2,Math.min(9,(d.r_arcmin||1.5)*1.6));
     const col=d.klass==="SNR"?"var(--snr)":"var(--cand)";
     return `<a href="objects/$${d.slug}.html"><circle cx="$${x(d.ra)}" cy="$${y(d.dec)}" r="$${rad}"
-      fill="$${col}" fill-opacity="0.65" stroke="$${col}"><title>$${d.id}</title></circle></a>`;}).join("");
+      fill="$${col}" fill-opacity="0.86" stroke="#faf8f3" stroke-width="1.4"><title>$${d.id}</title></circle></a>`;}).join("");
   svg.innerHTML=s;
 }
 ["q","fclass","ftype"].forEach(id=>document.getElementById(id).oninput=render);
+document.getElementById("clear").onclick=()=>{
+  document.getElementById("q").value="";
+  document.getElementById("fclass").value="";
+  document.getElementById("ftype").value="";
+  render();
+};
 render();
-</script>""").substitute(n_snr=n_snr, n_cand=n_cand, data=json.dumps(records))
+</script>""").substitute(n_snr=n_snr, n_cand=n_cand, n_total=len(df), data=json.dumps(records))
     return PAGE.substitute(
         title=SITE_NAME, root=".", site_name=SITE_NAME, body=body,
         version=version, version_note=VERSION_NOTE, head_extra="",
@@ -400,14 +448,14 @@ def about_page(version: str) -> str:
     body = """
 <h1>About this catalog</h1>
 <p>This is a living, literature-consolidated census of supernova remnants in
-the Large Magellanic Cloud — intended as the LMC counterpart to
+the Large Magellanic Cloud â€” intended as the LMC counterpart to
 <a href="https://www.mrao.cam.ac.uk/surveys/snrs/">Green's Galactic SNR
 catalog</a> and <a href="http://snrcat.physics.umanitoba.ca/">SNRcat</a>.</p>
 <h3>Classification criteria</h3>
 <p>An object is a <strong>confirmed SNR</strong> when it satisfies at least
-two of the three classical criteria (Filipović et al. 1998; Bozzetto et al.
-2017): (1) non-thermal radio spectral index α &lt; −0.4; (2) diffuse X-ray
-emission; (3) shock-enhanced [S II]/Hα ≥ 0.4. One criterion → candidate.</p>
+two of the three classical criteria (FilipoviÄ‡ et al. 1998; Bozzetto et al.
+2017): (1) non-thermal radio spectral index Î± &lt; âˆ’0.4; (2) diffuse X-ray
+emission; (3) shock-enhanced [S II]/HÎ± â‰¥ 0.4. One criterion â†’ candidate.</p>
 <h3>Sources</h3>
 <ul>
 <li>Maggi et al. 2016, A&amp;A 585, A162 (XMM-Newton X-ray population)</li>
@@ -434,10 +482,10 @@ emission; (3) shock-enhanced [S II]/Hα ≥ 0.4. One criterion → candidate.</p
 }</code></pre>
 <h3>Imagery</h3>
 <p>Object pages stream survey imagery client-side via
-<a href="https://aladin.cds.unistra.fr/">Aladin Lite</a> (DSS2, SHASSA Hα,
+<a href="https://aladin.cds.unistra.fr/">Aladin Lite</a> (DSS2, SHASSA HÎ±,
 eROSITA-DE DR1, XMM-Newton EPIC, RACS-low, SUMSS, GALEX, AllWISE, 2MASS
-HiPS), and — where generated — show pipeline cutout PNGs (eROSITA-DE DR1
-X-ray, DeMCELS DR1 Hα &amp; [S II], ASKAP-EMU 888 MHz) built by the
+HiPS), and â€” where generated â€” show pipeline cutout PNGs (eROSITA-DE DR1
+X-ray, DeMCELS DR1 HÎ± &amp; [S II], ASKAP-EMU 888 MHz) built by the
 <a href="https://github.com/whyvav/VLMism">VLMism</a> pipeline, with
 per-file provenance in <a href="images/manifest.csv">images/manifest.csv</a>.
 Credits: eROSITA-DE (Merloni et al. 2024); DeMCELS (Points et al. 2024,
@@ -446,53 +494,190 @@ NSF NOIRLab); ASKAP-EMU (Pennock et al. 2021, CSIRO/CASDA); SHASSA
 <a href="https://alasky.cds.unistra.fr/hips-image-services/hips2fits">CDS
 hips2fits</a> and are for visualization only.</p>
 <h3>Data &amp; feedback</h3>
-<p>Download: <a href="catalog.csv">CSV</a> · <a href="catalog.json">JSON</a> ·
+<p>Download: <a href="catalog.csv">CSV</a> Â· <a href="catalog.json">JSON</a> Â·
 cutout images <a href="images/manifest.csv">manifest</a>.
 Corrections and new-object reports: open an issue on the repository.</p>"""
     return PAGE.substitute(
-        title=f"About — {SITE_NAME}", root=".", site_name=SITE_NAME, body=body,
+        title=f"About â€” {SITE_NAME}", root=".", site_name=SITE_NAME, body=body,
         version=version, version_note=VERSION_NOTE, head_extra="",
     )
 
 
 STYLE = """
-:root { --snr:#2563eb; --cand:#ea580c; --bg:#0f172a; --panel:#1e293b; --tx:#e2e8f0; }
+:root {
+  --paper:#faf8f3;
+  --sand:#efebe1;
+  --surface:#fffdfa;
+  --panel:#ffffff;
+  --ink:#211f1a;
+  --muted:#5f594d;
+  --faint:#8a8474;
+  --line:#e2dccf;
+  --line-strong:#cfc6b6;
+  --snr:#35619c;
+  --snr-soft:#e7f0fb;
+  --cand:#b7763a;
+  --cand-soft:#f5eadf;
+  --wood:#9c6b43;
+  --cyan:#1596a7;
+  --grid:#d8d1c4;
+  --shadow:0 18px 45px rgba(33,31,26,.08);
+}
 * { box-sizing:border-box; }
-body { font-family:system-ui,sans-serif; margin:0; background:var(--bg); color:var(--tx); }
-nav { display:flex; gap:18px; align-items:baseline; padding:12px 24px; background:var(--panel); flex-wrap:wrap; }
-nav a { color:var(--tx); text-decoration:none; } nav a:hover { color:#7dd3fc; }
-nav .ver { margin-left:auto; font-size:11px; opacity:.6; }
-main { padding:18px 24px; max-width:1280px; margin:0 auto; }
-footer { padding:14px 24px; font-size:11.5px; opacity:.65; }
-h1 { font-size:22px; } h3 { margin:14px 0 6px; color:#93c5fd; }
-.lede { max-width:70ch; }
-.pill { padding:2px 10px; border-radius:12px; font-size:12px; color:#fff; }
-.snr { background:var(--snr); } .cand { background:var(--cand); }
-.note { font-size:11px; opacity:.7; margin-left:6px; }
-.banner { background:#374151; border-left:3px solid #7dd3fc; padding:8px 12px; font-size:13px; }
-#controls { display:flex; gap:12px; flex-wrap:wrap; margin:12px 0; }
-input,select { background:var(--panel); color:var(--tx); border:1px solid #334155; border-radius:6px; padding:6px 10px; }
-#wrap { display:flex; gap:14px; flex-wrap:wrap; }
-#skybox { background:var(--panel); border-radius:10px; padding:10px; }
-#tablebox { flex:1; min-width:600px; max-height:76vh; overflow:auto; background:var(--panel); border-radius:10px; }
+html { color-scheme:light; }
+body {
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  line-height:1.5;
+  overflow-x:hidden;
+}
+a { color:var(--snr); text-decoration:none; }
+a:hover { color:#294c7d; text-decoration:underline; text-underline-offset:3px; }
+.site-header {
+  display:grid;
+  grid-template-columns:minmax(260px,1fr) auto auto;
+  gap:22px;
+  align-items:center;
+  padding:14px clamp(18px,4vw,56px);
+  background:rgba(250,248,243,.94);
+  border-bottom:1px solid var(--line);
+  position:sticky;
+  top:0;
+  z-index:20;
+  backdrop-filter:blur(12px);
+}
+.brand-lockup { display:flex; align-items:center; gap:14px; color:var(--ink); min-width:0; }
+.brand-lockup:hover { text-decoration:none; color:var(--ink); }
+.brand-mark { width:78px; height:54px; object-fit:contain; flex:none; }
+.brand-copy { display:flex; flex-direction:column; min-width:0; }
+.brand-word { font-size:clamp(25px,3vw,38px); font-weight:650; letter-spacing:0; line-height:1; white-space:nowrap; }
+.brand-tagline { margin-top:5px; color:var(--muted); font:500 12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.site-nav { display:flex; align-items:center; gap:4px; }
+.site-nav a { color:var(--ink); padding:8px 12px; border-radius:6px; font-weight:600; font-size:14px; }
+.site-nav a:hover { background:var(--sand); text-decoration:none; }
+.ver { justify-self:end; border:1px solid var(--line); border-radius:6px; padding:7px 10px; color:var(--muted); font-size:12px; background:var(--surface); white-space:nowrap; }
+main { width:min(calc(100% - 40px), 1440px); margin:0 auto; padding:34px 0 24px; }
+.site-footer { width:min(calc(100% - 40px), 1440px); margin:0 auto; padding:24px 0 34px; color:var(--muted); font-size:12px; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:8px 18px; }
+h1 { margin:0; font-size:clamp(32px,4.4vw,58px); line-height:1.05; letter-spacing:0; font-weight:720; }
+/* Homepage only */
+.hero h1 {
+  font-size:clamp(28px,3vw,40px);
+  line-height:1.12;
+}
+h2 { margin:0; font-size:16px; line-height:1.2; }
+h3 { margin:0 0 8px; color:var(--ink); font-size:15px; }
+.lede { max-width:78ch; margin:12px 0 0; color:#3f3a33; font-size:16px; }
+.hero { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:28px; align-items:end; margin-bottom:24px; }
+.stat-grid { display:grid; grid-template-columns:repeat(3,minmax(118px,1fr)); gap:10px; }
+.stat-card { display:grid; gap:2px; border:1px solid var(--line); border-radius:8px; padding:14px 16px; background:var(--surface); min-width:118px; }
+.stat-card strong { color:var(--snr); font-size:28px; line-height:1; }
+.stat-card span { color:var(--muted); font-size:12px; font-weight:650; }
+.stat-card.cand strong { color:var(--cand); }
+.stat-card.total strong { color:var(--ink); }
+.workbench, .viewer-panel, .property-stack section, .cutouts, pre {
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:8px;
+  box-shadow:var(--shadow);
+}
+.workbench { overflow:hidden; min-width:0; }
+#controls { display:flex; align-items:end; gap:12px; flex-wrap:wrap; padding:14px; border-bottom:1px solid var(--line); }
+#controls label { display:grid; gap:5px; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+.search-field { flex:1 1 300px; }
+input, select, button {
+  height:40px;
+  background:var(--surface);
+  color:var(--ink);
+  border:1px solid var(--line-strong);
+  border-radius:6px;
+  padding:0 11px;
+  font:600 14px ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+input { width:100%; min-width:0; font-weight:500; }
+button { cursor:pointer; }
+button:hover, input:focus, select:focus { border-color:var(--snr); outline:none; }
+.count { margin-left:auto; color:var(--ink); font-weight:750; padding:9px 0; white-space:nowrap; }
+#wrap { display:grid; grid-template-columns:minmax(340px, 470px) minmax(0,1fr); min-height:560px; min-width:0; }
+#skybox { border-right:1px solid var(--line); padding:0; background:linear-gradient(180deg,#fffdfa 0%,#faf8f3 100%); min-width:0; }
+.panel-head { padding:13px 16px; border-bottom:1px solid var(--line); }
+.panel-head h2 span { color:var(--faint); font:700 11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; margin-left:6px; }
+#sky { display:block; width:100%; height:auto; max-height:430px; }
+.map-legend { display:flex; gap:16px; align-items:center; padding:8px 16px 0; color:var(--muted); font-size:12px; }
+.dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:-1px; }
+.dot.snr { background:var(--snr); }
+.dot.cand { background:var(--cand); }
+.note { color:var(--muted); font-size:11.5px; opacity:.9; }
+#skybox .note { margin:7px 16px 14px; }
+#tablebox { min-width:0; max-width:100%; overflow:auto; background:var(--panel); }
 table { border-collapse:collapse; width:100%; font-size:12.5px; }
-th,td { padding:5px 8px; text-align:left; white-space:nowrap; }
-#tbl th { position:sticky; top:0; background:#334155; cursor:pointer; user-select:none; }
-tr:nth-child(even) { background:#24334a; } #tbl tr:hover { background:#3b4d68; }
-a { color:#7dd3fc; }
-.objgrid { display:grid; grid-template-columns: minmax(340px,1fr) minmax(340px,1fr); gap:18px; }
-@media (max-width:900px){ .objgrid { grid-template-columns:1fr; } }
-.objgrid section { background:var(--panel); border-radius:10px; padding:8px 12px; margin-bottom:10px; }
-.objgrid table th { width:56%; font-weight:500; opacity:.85; }
-.controls { margin:8px 0; } .linkrow { display:flex; gap:14px; margin:8px 0; flex-wrap:wrap; }
-pre { background:var(--panel); border-radius:8px; padding:10px 14px; overflow-x:auto; font-size:12px; }
-.cutouts { background:var(--panel); border-radius:10px; padding:8px 12px; margin-top:14px; }
+#tbl { min-width:1040px; }
+th,td { padding:9px 12px; text-align:left; white-space:nowrap; border-bottom:1px solid #eee8dc; }
+th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+#tbl th { position:sticky; top:0; z-index:1; background:#fbf8f1; cursor:pointer; user-select:none; }
+#tbl tr:hover { background:#f6f0e7; }
+.status-pill, .type-pill {
+  display:inline-flex;
+  align-items:center;
+  min-height:22px;
+  border-radius:6px;
+  padding:2px 8px;
+  font-size:12px;
+  font-weight:750;
+  line-height:1;
+}
+.status-pill.snr { color:var(--snr); background:var(--snr-soft); border:1px solid #b8d0ee; }
+.status-pill.cand { color:#9b4f16; background:var(--cand-soft); border:1px solid #e2c4a7; }
+.type-pill { color:#276071; background:#e1f4f6; border:1px solid #b9dfe5; }
+.coverage { display:grid; grid-template-columns:1.2fr repeat(4,1fr); gap:18px; align-items:start; margin-top:24px; padding:22px 0 0; border-top:1px solid var(--line); }
+.coverage h2 { font-size:22px; }
+.coverage div { display:grid; gap:3px; border-left:1px solid var(--line); padding-left:16px; }
+.coverage strong { color:var(--ink); }
+.coverage span { color:var(--muted); font-size:12px; }
+.page-head { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:20px; }
+.object-head h1 { font-size:clamp(30px,4vw,48px); }
+.banner { background:#f6eadf; border-left:3px solid var(--cand); padding:10px 12px; font-size:13px; border-radius:6px; }
+.objgrid { display:grid; grid-template-columns:minmax(360px,1.05fr) minmax(360px,.95fr); gap:18px; }
+.viewer-panel { padding:12px; }
+#aladin { border-radius:6px; overflow:hidden; background:#111; }
+.controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0; }
+.linkrow { display:flex; gap:10px; margin:10px 0 2px; flex-wrap:wrap; }
+.linkrow a { border:1px solid var(--line); border-radius:6px; padding:6px 9px; background:var(--surface); font-size:13px; font-weight:650; }
+.property-stack { display:grid; gap:10px; }
+.property-stack section { padding:12px; box-shadow:none; }
+.property-stack table th { width:56%; color:var(--muted); font-weight:650; text-transform:none; letter-spacing:0; font-size:12px; }
+pre { padding:14px; overflow-x:auto; font-size:12px; box-shadow:none; }
+ul { padding-left:22px; }
+.cutouts { padding:14px; margin-top:18px; }
 .cutgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; }
 .cutgrid figure { margin:0; }
-.cutgrid img { width:100%; border-radius:6px; display:block; image-rendering:auto; }
-.cutgrid figcaption { font-size:11.5px; margin-top:4px; line-height:1.35; }
-.cutgrid figcaption .note { display:block; }
-.viz { background:#b45309; color:#fff; border-radius:8px; padding:0 6px; font-size:10px; margin-left:6px; }
+.cutgrid img { width:100%; border-radius:6px; display:block; image-rendering:auto; border:1px solid var(--line); }
+.cutgrid figcaption { font-size:11.5px; margin-top:5px; line-height:1.35; color:var(--muted); }
+.cutgrid figcaption .note { display:block; margin-left:0; }
+.viz { background:var(--cand); color:#fff; border-radius:6px; padding:1px 6px; font-size:10px; margin-left:6px; }
+@media (max-width:1100px) {
+  .site-header { grid-template-columns:1fr; gap:10px; position:static; }
+  .site-nav { order:2; overflow-x:auto; }
+  .ver { justify-self:start; }
+  .hero { grid-template-columns:1fr; }
+  .stat-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  #wrap, .objgrid, .coverage { grid-template-columns:1fr; }
+  #skybox { border-right:0; border-bottom:1px solid var(--line); }
+}
+@media (max-width:680px) {
+  main, .site-footer { width:min(calc(100% - 28px), 1440px); }
+  h1 { font-size:28px; line-height:1.08; }
+  .hero > div:first-child, .hero h1, .hero .lede { max-width:22.5rem; }
+  .brand-mark { width:58px; height:40px; }
+  .brand-word { font-size:25px; }
+  .brand-tagline { display:none; }
+  .stat-grid { grid-template-columns:1fr; }
+  #controls { align-items:stretch; }
+  #controls label, #controls button, .count { width:100%; }
+  .count { margin-left:0; padding:0; }
+  th,td { padding:8px 10px; }
+}
 """
 
 
@@ -519,8 +704,11 @@ def main() -> None:
     version = Path(args.catalog).stem.replace("lmc_snrs_extended_", "")
     out = Path(args.out)
     (out / "objects").mkdir(parents=True, exist_ok=True)
+    (out / "brand").mkdir(parents=True, exist_ok=True)
 
     (out / "style.css").write_text(STYLE, encoding="utf-8")
+    for asset in ("logo-mark.svg", "logo-lockup.svg", "favicon.svg"):
+        shutil.copy(Path("brand") / asset, out / "brand" / asset)
     (out / "index.html").write_text(index_page(df, version), encoding="utf-8")
     (out / "about.html").write_text(about_page(version), encoding="utf-8")
     df.to_csv(out / "catalog.csv", index=False)
