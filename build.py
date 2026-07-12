@@ -362,6 +362,20 @@ def object_page(row: pd.Series, version: str,
     options = "".join(
         f'<option value="{sid}">{label}</option>' for sid, label in ALADIN_SURVEYS
     )
+    # Morphology ellipse (Zangrandi+24 / Shukla 24): major axis maps to the
+    # local Dec-axis radius and minor axis to the local RA-axis radius, then
+    # A.ellipse's rotation is applied as a standard N-through-E position
+    # angle — matching how pa_deg is defined for the major axis in the catalog.
+    maj = row.get("size_maj_arcmin")
+    minr = row.get("size_min_arcmin")
+    if maj is None or (isinstance(maj, float) and np.isnan(maj)):
+        maj = row.get("d_arcmin") or 4.0
+    if minr is None or (isinstance(minr, float) and np.isnan(minr)):
+        minr = maj
+    pa = row.get("pa_deg")
+    pa = 0.0 if pa is None or (isinstance(pa, float) and np.isnan(pa)) else pa
+    r_dec_deg = (maj / 2.0) / 60.0
+    r_ra_deg = (minr / 2.0) / 60.0
     groups_html = ""
     for gname, fields in PROPERTY_GROUPS:
         rows_html = ""
@@ -394,6 +408,7 @@ def object_page(row: pd.Series, version: str,
     <div id="aladin" style="width:100%;height:420px"></div>
     <div class="controls">
       <label>Survey <select id="survey">{options}</select></label>
+      <button type="button" id="resetView" title="Recentre on the object's catalog position">&#8982; Recentre</button>
       <span class="note">FoV {fov:.2f}° · drag / scroll to explore</span>
     </div>
     <div class="linkrow">
@@ -416,7 +431,11 @@ A.init.then(() => {{
     realFullscreen: true,
   }});
   aladin.addCatalog(A.catalogFromSimbad({{ra: {ra}, dec: {dec}}}, {fov / 2:.3f}, {{shape: "circle", color: "#7dd3fc", onClick: "showPopup"}}));
+  const snrOverlay = A.graphicOverlay({{color: "#f2b705", lineWidth: 2}});
+  aladin.addOverlay(snrOverlay);
+  snrOverlay.add(A.ellipse({ra}, {dec}, {r_ra_deg:.6f}, {r_dec_deg:.6f}, {pa:.1f}, {{color: "#f2b705", lineWidth: 2}}));
   document.getElementById("survey").onchange = e => aladin.setImageSurvey(e.target.value);
+  document.getElementById("resetView").onclick = () => aladin.gotoRaDec({ra}, {dec});
 }});
 </script>"""
     return PAGE.substitute(
@@ -673,13 +692,30 @@ document.getElementById("zoomReset").onclick=()=>{
 {
   const skyEl=document.getElementById("sky");
   let dragging=false, dragMoved=false, captured=false, dragStartPt=null, dragStartPan=null;
+  // Two-finger pinch-to-zoom (touch): tracked independently of the drag state
+  // above via a pointerId->point map. Anchored on the pinch's starting
+  // midpoint (in sky coordinates) so that spot stays fixed under the fingers
+  // as they spread/pinch and move, mirroring the wheel-zoom anchoring below.
+  const activePointers=new Map();
+  let pinchStartDist=null, pinchStartZoom=1, pinchStartPan=null, pinchMidStart=null;
   const svgPoint=e=>{
     const pt=skyEl.createSVGPoint();
     pt.x=e.clientX; pt.y=e.clientY;
     return pt.matrixTransform(skyEl.getScreenCTM().inverse());
   };
   skyEl.addEventListener("pointerdown",e=>{
-    if(e.button>0) return;
+    activePointers.set(e.pointerId, svgPoint(e));
+    if(activePointers.size===2){
+      dragging=false;
+      for(const id of activePointers.keys()){ try{ skyEl.setPointerCapture(id); }catch(_){} }
+      const pts=[...activePointers.values()];
+      pinchStartDist=Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+      pinchStartZoom=zoomLevel;
+      pinchStartPan={x:panXi,y:panEta};
+      pinchMidStart={x:(pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2};
+      return;
+    }
+    if(activePointers.size>2 || e.button>0) return;
     dragging=true; dragMoved=false; captured=false;
     dragStartPt=svgPoint(e);
     dragStartPan={x:panXi,y:panEta};
@@ -687,6 +723,23 @@ document.getElementById("zoomReset").onclick=()=>{
     // plain click still reaches the marker's <a> link and navigates.
   });
   skyEl.addEventListener("pointermove",e=>{
+    if(activePointers.has(e.pointerId)) activePointers.set(e.pointerId, svgPoint(e));
+    if(activePointers.size===2 && skyTangent && pinchStartDist){
+      const pts=[...activePointers.values()];
+      const dist=Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+      const mid={x:(pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2};
+      const newZoom=Math.min(ZOOM_MAX,Math.max(ZOOM_MIN, pinchStartZoom*(dist/pinchStartDist)));
+      const scaleOld=skyBaseScale*pinchStartZoom;
+      const xi=(SKY_CX-pinchMidStart.x)/scaleOld+pinchStartPan.x;
+      const eta=(SKY_CY-pinchMidStart.y)/scaleOld+pinchStartPan.y;
+      zoomLevel=newZoom;
+      const scaleNew=skyBaseScale*zoomLevel;
+      panXi=clamp(xi-(SKY_CX-mid.x)/scaleNew, -skyTangent.xiRange, skyTangent.xiRange);
+      panEta=clamp(eta-(SKY_CY-mid.y)/scaleNew, -skyTangent.etaRange, skyTangent.etaRange);
+      updateZoomButtons();
+      drawSky(lastSkyRows);
+      return;
+    }
     if(!dragging||!skyTangent) return;
     const p=svgPoint(e);
     const dxPx=p.x-dragStartPt.x, dyPx=p.y-dragStartPt.y;
@@ -701,6 +754,8 @@ document.getElementById("zoomReset").onclick=()=>{
     drawSky(lastSkyRows);
   });
   const endDrag=e=>{
+    activePointers.delete(e.pointerId);
+    if(activePointers.size<2){ pinchStartDist=null; pinchMidStart=null; }
     if(!dragging) return;
     dragging=false;
     if(captured && skyEl.hasPointerCapture(e.pointerId)) skyEl.releasePointerCapture(e.pointerId);
@@ -1007,6 +1062,17 @@ th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacin
 .viewer-panel { padding:12px; }
 #aladin { border-radius:6px; overflow:hidden; background:#111; }
 #aladin.aladin-fullscreen { z-index:999; }
+/* Aladin Lite's own CSS caps the SIMBAD source popup at 200px with clipped
+   cells; widen it and turn on horizontal scroll so long values (designations,
+   coordinates) stay readable. !important guards against load-order with
+   aladin.css, which is injected by the script tag after ours. */
+.aladin-popup-container { width:auto !important; max-width:min(90vw,480px) !important; }
+.aladin-marker-measurement { overflow-x:auto !important; }
+.aladin-measurement-div { overflow-x:auto !important; }
+.aladin-measurement-div table { width:max-content !important; }
+.aladin-measurement-div table tr td, .aladin-measurement-div table tr td a {
+  max-width:none !important; white-space:nowrap !important;
+}
 .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0; }
 .linkrow { display:flex; gap:10px; margin:10px 0 2px; flex-wrap:wrap; }
 .linkrow a { border:1px solid var(--line); border-radius:6px; padding:6px 9px; background:var(--surface); font-size:13px; font-weight:650; }
