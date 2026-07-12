@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import shutil
 from pathlib import Path
@@ -73,6 +74,8 @@ PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("alias", "Alias / common name", ""),
         ("klass", "Status", ""),
         ("sn_type", "SN type", "('?' = tentative)"),
+        ("sn_type_m16", "SN type (Maggi+16)", "(App. B / Fe K)"),
+        ("sn_type_b17", "SN type (Bozzetto+17)", "(TN=Ia, CC=core-collapse, q=questionable)"),
         ("ref_discovery", "Discovery ref", ""),
         ("ref_confirm", "Confirmation ref", ""),
     ]),
@@ -97,6 +100,12 @@ PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("nh_1e21", "N_H [10^21 cm^-2]", "(Maggi+16)"),
         ("age_kyr", "Age [kyr]", "(Maggi+16)"),
     ]),
+    ("eROSITA spectroscopy (Zangrandi+26, Paper II)", [
+        ("nh_z26_1e22", "N_H [10^22 cm^-2]", ""),
+        ("kt_z26_kev", "kT [keV]", ""),
+        ("tau_z26_1e11", "τ [10^11 s cm^-3]", ""),
+        ("fx_z26_1e-14", "F_X [10^-14 erg s^-1 cm^-2]", "(unabsorbed, 0.3-8 keV)"),
+    ]),
     ("Radio (Bozzetto+17)", [
         ("alpha_radio", "Spectral index α", ""),
         ("alpha_radio_err", "α error", ""),
@@ -106,6 +115,14 @@ PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("e0_1e51_erg", "E_0 [10^51 erg]", ""),
         ("age_l17_yr", "Age [yr]", ""),
         ("n0_cm3", "n_0 [cm^-3]", ""),
+    ]),
+    ("Ages & energetics from the literature", [
+        ("age_b17_kyr", "Age [kyr]", "(Bozzetto+17 compilation)"),
+        ("age_b17_err_kyr", "Age error [kyr]", ""),
+        ("age_b17_ref", "Age reference", ""),
+        ("age_k22_kyr", "Age [kyr]", "(Kavanagh+22, Sedov range)"),
+        ("e0_k22_1e51", "E_0 [10^51 erg]", "(Kavanagh+22, range)"),
+        ("n0_k22_cm3", "n_0 [cm^-3]", "(Kavanagh+22, range)"),
     ]),
 ]
 
@@ -248,6 +265,33 @@ def load_image_manifest(images_dir: Path) -> dict[str, dict]:
     return out
 
 
+def resolve_lit_data(explicit: str | None) -> Path | None:
+    """Locate ``measurements_long.csv``, the per-value literature-provenance
+    table behind the object-page "All published measurements" panel.
+
+    This file is produced by the re-extraction pipeline that lives in
+    **MCSNRdata**, a private sibling repo (source-paper PDFs carry journal
+    copyright, so the pipeline and its outputs aren't committed here).
+    Resolution order, mirroring VLMism's ``mcsnrcat.default_catalog_dir``:
+
+    1. ``explicit`` (the ``--lit-data`` CLI flag), if given;
+    2. the ``MCSNRCAT_LIT_DATA`` environment variable, if set;
+    3. the sibling checkout ``../MCSNRdata/paper_tables/measurements_long.csv``.
+
+    Returns ``None`` if not found anywhere (e.g. in CI, which only checks out
+    this public repo) — the panel is then skipped silently, same as images.
+    """
+    if explicit:
+        return Path(explicit)
+    env = os.environ.get("MCSNRCAT_LIT_DATA")
+    if env:
+        return Path(env)
+    sibling = Path(__file__).resolve().parent.parent / "MCSNRdata" / "paper_tables" / "measurements_long.csv"
+    if sibling.exists():
+        return sibling
+    return None
+
+
 def images_panel(slug: str, obj_images: dict) -> str:
     """HTML for the multiwavelength cutout strip of one object page."""
     cards = ""
@@ -273,8 +317,46 @@ pipeline: <a href="https://github.com/whyvav/VLMism">VLMism</a>.</p>
 </section>"""
 
 
+def lit_panel(lit_rows: list[dict]) -> str:
+    """Collapsible per-object table of every published measurement."""
+    if not lit_rows:
+        return ""
+    trs = ""
+    for r in lit_rows:
+        val = str(r.get("value", ""))
+        if len(val) > 70:
+            val = val[:67] + "…"
+        el, eh = r.get("err_lo"), r.get("err_hi")
+        err = ""
+        if el not in (None, "") and not pd.isna(el):
+            err = f" ±{el}" if el == eh else f" +{eh}/-{el}"
+        if r.get("is_limit") in (True, "True"):
+            val = "limit: " + val
+        comp = f" [{r['component']}]" if r.get("component") and not pd.isna(r["component"]) else ""
+        unit = r.get("unit")
+        unit = "" if (unit is None or pd.isna(unit)) else f" {unit}"
+        bib = r.get("bibcode")
+        ref = r.get("ref_code", "")
+        ref_html = (f'<a href="https://ui.adsabs.harvard.edu/abs/{bib}" target="_blank">{ref}</a>'
+                    if isinstance(bib, str) and bib.strip() else ref)
+        src = r.get("source_table", "")
+        trs += (f"<tr><td>{r['param']}{comp}</td><td>{val}{err}{unit}</td>"
+                f"<td>{ref_html}</td><td class=\"note\">{src}</td></tr>")
+    return f"""
+<details class="litpanel">
+  <summary>All published measurements ({len(lit_rows)}) — literature provenance</summary>
+  <table>
+    <thead><tr><th>Parameter</th><th>Value</th><th>Ref</th><th>Table</th></tr></thead>
+    <tbody>{trs}</tbody>
+  </table>
+  <p class="note">Extracted from the source papers by a literature
+  re-extraction pipeline (private companion repo — not published here).</p>
+</details>"""
+
+
 def object_page(row: pd.Series, version: str,
-                obj_images: dict | None = None) -> str:
+                obj_images: dict | None = None,
+                lit_rows: list[dict] | None = None) -> str:
     fov = max(3.0 * (row.get("d_arcmin") or 4.0) / 60.0, 0.12)
     surveys_js = json.dumps([s for s, _ in ALADIN_SURVEYS])
     options = "".join(
@@ -324,6 +406,7 @@ def object_page(row: pd.Series, version: str,
   <div class="property-stack">{groups_html}</div>
 </div>
 {images_panel(slugify(row["id"]), obj_images or {})}
+{lit_panel(lit_rows or [])}
 <script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
 <script>
 A.init.then(() => {{
@@ -696,8 +779,20 @@ emission; (3) shock-enhanced [S II]/Hα ≥ 0.4. One criterion → candidate.</p
 <li>Kavanagh et al. 2022, MNRAS 515, 4099 (XMM faint/evolved)</li>
 <li>Bozzetto et al. 2022, MNRAS 518, 2574 (ASKAP)</li>
 <li>Zangrandi et al. 2024, A&amp;A 692, A237 (eROSITA census)</li>
+<li>Zangrandi et al. 2026, A&amp;A 709, A207 (eROSITA Paper II: spectral analysis &amp; XLF)</li>
+<li>Sasaki et al. 2025, A&amp;A 693, L15 (outskirt SNRs; J0614-7251 &amp; J0624-6948 confirmations)</li>
+<li>Filipović et al. 2022, MNRAS 512, 265 (J0624-6948 discovery)</li>
+<li>Maitra et al. 2019/2021, MNRAS 490/504 (J0513-6724, J0507-6847 + compact objects)</li>
 <li>Shukla 2024, <a href="https://github.com/whyvav/MThesis">MSc thesis</a> (consolidation; J0500-6512 confirmation)</li>
 </ul>
+<h3>Data provenance</h3>
+<p>From data v4 the catalog is rebuilt from a systematic re-extraction of all
+source papers (tables, text and references): every value can be traced back
+to a specific paper and table via <code>measurements_long.csv</code> (one row
+per object, parameter and reference). Where available, this provenance is
+shown per object as an "All published measurements" panel below its
+properties. The re-extraction pipeline and its outputs live in a private
+companion repository (the source-paper PDFs carry journal copyright).</p>
 <h3>How to cite</h3>
 <p>Until the accompanying paper is published, please cite this website by URL & data version, and the
 <a href="https://github.com/whyvav/MThesis">Master's Thesis</a> this catalog builds on:</p>
@@ -969,6 +1064,12 @@ def main() -> None:
         help="directory of pipeline-generated cutout PNGs (default: images/; "
         "skipped silently when absent)",
     )
+    parser.add_argument(
+        "--lit-data", default=None,
+        help="path to measurements_long.csv (default: $MCSNRCAT_LIT_DATA, else "
+        "../MCSNRdata/paper_tables/measurements_long.csv if that sibling repo "
+        "is checked out; skipped silently when absent, e.g. in CI)",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -982,7 +1083,13 @@ def main() -> None:
     (out / "objects").mkdir(parents=True, exist_ok=True)
     (out / "brand").mkdir(parents=True, exist_ok=True)
 
-    (out / "style.css").write_text(STYLE, encoding="utf-8")
+    (out / "style.css").write_text(STYLE + """
+.litpanel{margin:1.2rem 0}
+.litpanel summary{cursor:pointer;font-weight:600;padding:.5rem .75rem;background:var(--panel,#16213a);border-radius:8px}
+.litpanel table{width:100%;font-size:.85rem;border-collapse:collapse;margin-top:.5rem}
+.litpanel th,.litpanel td{text-align:left;padding:.25rem .5rem;border-bottom:1px solid rgba(125,150,200,.15)}
+.litpanel td.note{opacity:.65;font-size:.78rem}
+""", encoding="utf-8")
     for asset in ("logo-mark.svg", "logo-lockup.svg", "favicon.svg", "lmc-shassa-halpha.jpg"):
         shutil.copy(Path("brand") / asset, out / "brand" / asset)
     (out / "index.html").write_text(index_page(df, version), encoding="utf-8")
@@ -996,9 +1103,22 @@ def main() -> None:
     if image_index:
         shutil.copytree(images_dir, out / "images", dirs_exist_ok=True)
 
+    lit_index: dict = {}
+    lit_path = resolve_lit_data(args.lit_data)
+    if lit_path and lit_path.exists():
+        _lit = pd.read_csv(lit_path, comment="#")
+        _lit = _lit.sort_values(["param", "ref_code"])
+        for k, grp in _lit.groupby("snr_key"):
+            lit_index[k] = grp.to_dict("records")
+        logger.info("literature panel: %d objects with measurements (from %s)", len(lit_index), lit_path)
+    else:
+        logger.info("literature panel: measurements_long.csv not found (MCSNRdata sibling repo "
+                     "not checked out?) — panel skipped")
+
     for _, row in df.iterrows():
         slug = slugify(row["id"])
-        page = object_page(row, version, obj_images=image_index.get(slug))
+        page = object_page(row, version, obj_images=image_index.get(slug),
+                           lit_rows=lit_index.get(row["snr_key"], []))
         (out / "objects" / f"{slug}.html").write_text(page, encoding="utf-8")
     shutil.copy(args.catalog, out / Path(args.catalog).name)
     logger.info(
