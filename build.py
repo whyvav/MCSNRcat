@@ -75,7 +75,7 @@ PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("klass", "Status", ""),
         ("sn_type", "SN type", "('?' = tentative)"),
         ("sn_type_m16", "SN type (Maggi+16)", "(App. B / Fe K)"),
-        ("sn_type_b17", "SN type (Bozzetto+17)", "(TN=Ia, CC=core-collapse, q=questionable)"),
+        ("sn_type_b17", "SN type (Bozzetto+17)", "(q=questionable)"),
         ("ref_discovery", "Discovery ref", ""),
         ("ref_confirm", "Confirmation ref", ""),
     ]),
@@ -83,15 +83,15 @@ PROPERTY_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("ra", "RA [deg]", ""),
         ("dec", "Dec [deg]", ""),
     ]),
-    ("Morphology (Zangrandi+24, Shukla 24)", [
+    ("Morphology (Zangrandi+24)", [
         ("size_maj_arcmin", "Major axis [arcmin]", ""),
         ("size_min_arcmin", "Minor axis [arcmin]", ""),
         ("d_arcmin", "Mean diameter [arcmin]", ""),
         ("d_pc", "Diameter [pc]", "at 50 kpc"),
         ("pa_deg", "Position angle [deg]", ""),
         ("shape", "Fitted shape", ""),
-        ("ovality", "Ovality", ""),
-        ("eccentricity", "Eccentricity", ""),
+        ("ovality", "Ovality", "(Shukla 24)"),
+        ("eccentricity", "Eccentricity", "(Shukla 24)"),
     ]),
     ("X-ray (eROSITA / XMM)", [
         ("xray_rate_ctss", "eRASS rate [cts/s]", "(Zangrandi+24)"),
@@ -376,8 +376,13 @@ def object_page(row: pd.Series, version: str,
     pa = 0.0 if pa is None or (isinstance(pa, float) and np.isnan(pa)) else pa
     r_dec_deg = (maj / 2.0) / 60.0
     r_ra_deg = (minr / 2.0) / 60.0
+    def _is_empty(v: object) -> bool:
+        return v is None or (isinstance(v, float) and np.isnan(v)) or (isinstance(v, str) and not v.strip())
+
     groups_html = ""
     for gname, fields in PROPERTY_GROUPS:
+        if all(_is_empty(row.get(key)) for key, _, _ in fields):
+            continue  # no data for any field in this group on this object — omit the panel
         rows_html = ""
         for key, label, note in fields:
             raw = row.get(key)
@@ -387,7 +392,7 @@ def object_page(row: pd.Series, version: str,
                 val = f"&lt; {val}"
             note_html = f'<span class="note">{mathify(note)}</span>' if note else ""
             rows_html += f"<tr><th>{mathify(label)}{note_html}</th><td>{val}</td></tr>"
-        groups_html += f"<section><h3>{mathify(gname)}</h3><table>{rows_html}</table></section>"
+        groups_html += f"<section class=\"propcard\"><h3>{mathify(gname)}</h3><table>{rows_html}</table></section>"
 
     thesis_note = row.get("thesis_note")
     banner = (
@@ -418,7 +423,7 @@ def object_page(row: pd.Series, version: str,
       <a href="https://vizier.cds.unistra.fr/viz-bin/VizieR-4?-c={ra}%20{dec}&-c.rm=2" target="_blank">VizieR cone</a>
     </div>
   </section>
-  <div class="property-stack">{groups_html}</div>
+  {groups_html}
 </div>
 {images_panel(slugify(row["id"]), obj_images or {})}
 {lit_panel(lit_rows or [])}
@@ -960,7 +965,7 @@ h3 { margin:0 0 8px; color:var(--ink); font-size:15px; }
 .stat-card span { color:var(--muted); font-size:12px; font-weight:650; }
 .stat-card.cand strong { color:var(--cand); }
 .stat-card.total strong { color:var(--ink); }
-.workbench, .viewer-panel, .property-stack section, .cutouts, pre {
+.workbench, .viewer-panel, .propcard, .cutouts, pre {
   background:var(--panel);
   border:1px solid var(--line);
   border-radius:8px;
@@ -1058,7 +1063,12 @@ th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacin
 .page-head { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:20px; }
 .object-head h1 { font-size:clamp(30px,4vw,48px); }
 .banner { background:#f6eadf; border-left:3px solid var(--cand); padding:10px 12px; font-size:13px; border-radius:6px; }
-.objgrid { display:grid; grid-template-columns:minmax(360px,1.05fr) minmax(360px,.95fr); gap:18px; }
+/* Balanced two-column flow (not a fixed grid): the Aladin viewer and each
+   property-group card are independent break units, so shorter cards flow up
+   to fill the column under the viewer instead of leaving it empty while a
+   single tall column of cards runs down the other side. */
+.objgrid { column-count:2; column-width:360px; column-gap:18px; }
+.viewer-panel, .propcard { break-inside:avoid; -webkit-column-break-inside:avoid; margin-bottom:18px; }
 .viewer-panel { padding:12px; }
 #aladin { border-radius:6px; overflow:hidden; background:#111; }
 #aladin.aladin-fullscreen { z-index:999; }
@@ -1076,10 +1086,9 @@ th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacin
 .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0; }
 .linkrow { display:flex; gap:10px; margin:10px 0 2px; flex-wrap:wrap; }
 .linkrow a { border:1px solid var(--line); border-radius:6px; padding:6px 9px; background:var(--surface); font-size:13px; font-weight:650; }
-.property-stack { display:grid; gap:10px; }
-.property-stack section { padding:12px; box-shadow:none; }
-.property-stack table th { width:56%; color:var(--muted); font-weight:650; text-transform:none; letter-spacing:0; font-size:12px; }
-.property-stack table th .note { margin-left:6px; }
+.propcard { padding:12px; box-shadow:none; }
+.propcard table th { width:56%; color:var(--muted); font-weight:650; text-transform:none; letter-spacing:0; font-size:12px; }
+.propcard table th .note { margin-left:6px; }
 pre { padding:14px; overflow-x:auto; font-size:12px; box-shadow:none; }
 ul { padding-left:22px; }
 .cutouts { padding:14px; margin-top:18px; }
@@ -1095,7 +1104,7 @@ ul { padding-left:22px; }
   .ver { justify-self:start; }
   .hero { grid-template-columns:1fr; }
   .stat-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
-  #wrap, .objgrid, .coverage { grid-template-columns:1fr; }
+  #wrap, .coverage { grid-template-columns:1fr; }
   #skybox { border-right:0; border-bottom:1px solid var(--line); }
   /* Stacked: the table gets its own row, so restore normal flow and cap the
      height instead of filling the (now absent) sibling column. */
@@ -1110,6 +1119,7 @@ ul { padding-left:22px; }
   .brand-word { font-size:25px; }
   .brand-tagline { display:none; }
   .stat-grid { grid-template-columns:1fr; }
+  .objgrid { column-count:1; }
   #controls { align-items:stretch; }
   #controls label, #controls button, .count { width:100%; }
   .count { margin-left:0; padding:0; }
