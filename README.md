@@ -100,7 +100,7 @@ Until the accompanying paper is published, please cite this website by URL & dat
 ```bibtex
 @mastersthesis{Shukla2024_MThesis,
 	title = {X-ray {Evolution} of {Supernova} {Remnants} in the {Large} {Magellanic} {Cloud}},
-	shorttitle = {X-ray {Evolution} of {MCSNRs}},
+	shorttitle = {X-ray {Evolution} of {LMC SNRs},
 	url = {https://www.sternwarte.uni-erlangen.de/docs/theses/2024-11_Shukla.pdf},
 	language = {en},
 	school = {FAU},

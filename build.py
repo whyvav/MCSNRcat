@@ -858,7 +858,7 @@ companion repository (the source-paper PDFs carry journal copyright).</p>
 <a href="https://github.com/whyvav/MThesis">Master's Thesis</a> this catalog builds on:</p>
 <pre><code>@mastersthesis{Shukla2024_MThesis,
 	title = {X-ray {Evolution} of {Supernova} {Remnants} in the {Large} {Magellanic} {Cloud}},
-	shorttitle = {X-ray {Evolution} of {MCSNRs}},
+	shorttitle = {X-ray {Evolution} of {LMC SNRs},
 	url = {https://www.sternwarte.uni-erlangen.de/docs/theses/2024-11_Shukla.pdf},
 	language = {en},
 	school = {FAU},
