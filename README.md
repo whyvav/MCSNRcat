@@ -29,12 +29,13 @@ shock-enhanced [S II]/Hα ≥ 0.4. One criterion → candidate.
 - Yew et al. 2021, MNRAS 500, 2336 (optical)
 - Maitra et al. 2019, MNRAS 490, 5494 (J0513-6724)
 - Maitra et al. 2021, MNRAS 504, 326 (J0507-6847)
+- Sasaki et al. 2022, A&A 661, A37  (eROSITA; J0529-7004)
 - Filipović et al. 2022, MNRAS 512, 265 (J0624-6948 discovery)
 - Kavanagh et al. 2022, MNRAS 515, 4099 (XMM faint/evolved)
 - Bozzetto et al. 2022, MNRAS 518, 2574 (ASKAP)
 - Zangrandi et al. 2024, A&A 692, A237 (eROSITA census)
 - Zangrandi et al. 2026, A&A 709, A207 (eROSITA Paper II: spectra + XLF)
-- Sasaki et al. 2025, A&A 693, L15 (XMM/MeerKAT; J0614-7251 & J0624-6948 confirmations)
+- Sasaki et al. 2025, A&A 693, L15 (XMM/MeerKAT; J0614-7251 & J0624-6948)
 - Shukla 2024, [MSc Thesis](https://github.com/whyvav/MThesis) (consolidation; J0500-6512 confirmation)
 
 ## Architecture
@@ -99,14 +100,14 @@ Until the accompanying paper is published, please cite this website by URL & dat
 
 ```bibtex
 @mastersthesis{Shukla2024_MThesis,
-	title = {X-ray {Evolution} of {Supernova} {Remnants} in the {Large} {Magellanic} {Cloud}},
-	shorttitle = {X-ray {Evolution} of {LMC SNRs},
-	url = {https://www.sternwarte.uni-erlangen.de/docs/theses/2024-11_Shukla.pdf},
-	language = {en},
-	school = {FAU},
-	author = {Shukla, Vaibhav},
-	month = nov,
-	year = {2024}
+  title = {{X}-ray {Evolution} of {Supernova} {Remnants} in the {Large} {Magellanic} {Cloud}},
+  shorttitle = {{X}-ray {Evolution} of {LMC} {SNRs}},
+  url = {https://www.sternwarte.uni-erlangen.de/docs/theses/2024-11_Shukla.pdf},
+  language = {en},
+  school = {FAU Erlangen-N{\"u}rnberg},
+  author = {Shukla, Vaibhav},
+  month = nov,
+  year = {2024}
 }
 ```
 

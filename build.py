@@ -832,18 +832,19 @@ two of the three classical criteria (Filipović et al. 1998; Bozzetto et al.
 emission; (3) shock-enhanced [S II]/Hα ≥ 0.4. One criterion → candidate.</p>
 <h3>Sources</h3>
 <ul>
-<li>Maggi et al. 2016, A&amp;A 585, A162 (XMM-Newton X-ray population)</li>
-<li>Bozzetto et al. 2017, ApJS 230, 2 (radio/statistical)</li>
-<li>Leahy 2017, ApJ 837, 36 (energetics)</li>
-<li>Yew et al. 2021, MNRAS 500, 2336 (optical)</li>
-<li>Kavanagh et al. 2022, MNRAS 515, 4099 (XMM faint/evolved)</li>
-<li>Bozzetto et al. 2022, MNRAS 518, 2574 (ASKAP)</li>
-<li>Zangrandi et al. 2024, A&amp;A 692, A237 (eROSITA census)</li>
-<li>Zangrandi et al. 2026, A&amp;A 709, A207 (eROSITA Paper II: spectral analysis &amp; XLF)</li>
-<li>Sasaki et al. 2025, A&amp;A 693, L15 (outskirt SNRs; J0614-7251 &amp; J0624-6948 confirmations)</li>
-<li>Filipović et al. 2022, MNRAS 512, 265 (J0624-6948 discovery)</li>
-<li>Maitra et al. 2019/2021, MNRAS 490/504 (J0513-6724, J0507-6847 + compact objects)</li>
-<li>Shukla 2024, <a href="https://github.com/whyvav/MThesis">MSc thesis</a> (consolidation; J0500-6512 confirmation)</li>
+<li>M16: Maggi et al. 2016, A&amp;A 585, A162 (XMM-Newton X-ray population)</li>
+<li>B17: Bozzetto et al. 2017, ApJS 230, 2 (radio/statistical)</li>
+<li>L17: Leahy 2017, ApJ 837, 36 (energetics)</li>
+<li>Y21: Yew et al. 2021, MNRAS 500, 2336 (optical)</li>
+<li>K22: Kavanagh et al. 2022, MNRAS 515, 4099 (XMM faint/evolved)</li>
+<li>B22: Bozzetto et al. 2022, MNRAS 518, 2574 (ASKAP)</li>
+<li>Z24: Zangrandi et al. 2024, A&amp;A 692, A237 (eROSITA census)</li>
+<li>Z26: Zangrandi et al. 2026, A&amp;A 709, A207 (eROSITA Paper II: spectral analysis &amp; XLF)</li>
+<li>Sa25: Sasaki et al. 2025, A&amp;A 693, L15 (outskirt SNRs; J0614-7251 &amp; J0624-6948 confirmations)</li>
+<li>F22: Filipović et al. 2022, MNRAS 512, 265 (J0624-6948 radio discovery)</li>
+<li>Ma19/21: Maitra et al. 2019/2021, MNRAS 490 5494 / 504 326 (J0513-6724, J0507-6847)</li>
+<li>Sa22: Sasaki et al. 2022, A&amp;A 661, A37  (eROSITA diffuse X-rays; J0529-7004 confirmation)</li>
+<li>TW: Shukla 2024, <a href="https://www.sternwarte.uni-erlangen.de/docs/theses/2024-11_Shukla.pdf">MSc Thesis</a>, FAU Erlangen-Nürnberg (consolidation; J0500-6512 confirmation)</li>
 </ul>
 <h3>Data provenance</h3>
 <p>From data v4 the catalog is rebuilt from a systematic re-extraction of all
@@ -852,16 +853,16 @@ to a specific paper and table via <code>measurements_long.csv</code> (one row
 per object, parameter and reference). Where available, this provenance is
 shown per object as an "All published measurements" panel below its
 properties. The re-extraction pipeline and its outputs live in a private
-companion repository (the source-paper PDFs carry journal copyright).</p>
+companion repository.</p>
 <h3>How to cite</h3>
 <p>Until the accompanying paper is published, please cite this website by URL & data version, and the
 <a href="https://github.com/whyvav/MThesis">Master's Thesis</a> this catalog builds on:</p>
 <pre><code>@mastersthesis{Shukla2024_MThesis,
 	title = {X-ray {Evolution} of {Supernova} {Remnants} in the {Large} {Magellanic} {Cloud}},
-	shorttitle = {X-ray {Evolution} of {LMC SNRs},
+	shorttitle = {X-ray {Evolution} of {LMC} {SNRs}},
 	url = {https://www.sternwarte.uni-erlangen.de/docs/theses/2024-11_Shukla.pdf},
 	language = {en},
-	school = {FAU},
+	school = {FAU Erlangen-N{&#92;"u}rnberg},
 	author = {Shukla, Vaibhav},
 	month = nov,
 	year = {2024}
@@ -882,7 +883,7 @@ hips2fits</a> and are for visualization only.</p>
 <h3>Data &amp; feedback</h3>
 <p>Download: <a href="catalog.csv">CSV</a> · <a href="catalog.json">JSON</a> ·
 cutout images <a href="images/manifest.csv">manifest</a>.
-Corrections and new-object reports: open an issue on the repository.</p>"""
+For corrections or suggestions: open an issue on the <a href="https://github.com/whyvav/MCSNRcat">repository</a>, or simply drop me an <a href="mailto:vaibhavshukla008@gmail.com">email</a>.</p>"""
     return PAGE.substitute(
         title=f"About — {SITE_NAME}", root=".", site_name=SITE_NAME, body=body,
         version=version, version_note=VERSION_NOTE, head_extra="",
