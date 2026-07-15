@@ -45,19 +45,42 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent / "data"
 
-#: Short reference code -> (ADS bibcode / citation, confidence). Grow as new
-#: papers are cited. ``verify-bibcode`` = still needs an ADS lookup.
+#: Short reference code -> (ADS bibcode / citation, confidence). Grow as
+#: new papers are cited. ``verify-bibcode`` = still needs an ADS lookup.
+#: Synced against the codes actually used in v5 (2026-07-16); note ``Za24``
+#: was renamed ``Z24`` in the v5 curation pass.
 REF_REGISTRY: dict[str, tuple[str, str]] = {
+    # -- core catalog sources ------------------------------------------------
     "M16": ("2016A&A...585A.162M", "ok"),
     "B17": ("2017ApJS..230....2B", "ok"),
     "L17": ("2017ApJ...837...36L", "ok"),
     "Y21": ("2021MNRAS.500.2336Y", "ok"),
     "K22": ("2022MNRAS.515.4099K", "ok"),
     "B23": ("2022MNRAS.518.2574B", "ok"),
-    "Za24": ("2024A&A...692A.237Z", "ok"),
+    "Z24": ("2024A&A...692A.237Z", "ok"),  # renamed from Za24 in v5
     "F22": ("2022MNRAS.512..265F", "ok"),  # Filipovic+22, MNRAS 512, 265 (J0624-6948)
     "Sa25": ("2025A&A...693L..15S", "ok"),  # Sasaki+25, A&A 693, L15
     "TW": ("Shukla 2024, MSc thesis", "ok"),
+    # -- confirmation refs mapped in v5 --------------------------------------
+    "Sa22": ("2022A&A...661A..37S", "ok"),  # Sasaki+22, A&A 661, A37 (J0529-7004)
+    "KSP13": ("2013A&A...549A..99K", "ok"),  # Kavanagh, Sasaki, Points+13 (J0527-7104)
+    "Ma19": ("2019MNRAS.490.5494M", "ok"),  # Maitra+19 (J0513-6724)
+    "Ma21": ("2021MNRAS.504..326M", "ok"),  # Maitra+21 (J0507-6847)
+    # -- discovery refs verified in v5 ---------------------------------------
+    "HP99": ("1999A&AS..139..277H", "ok"),  # Haberl & Pietsch 1999
+    "MC73": ("1973ApJ...180..725M", "ok"),  # Mathewson & Clarke 1973
+    "GSH12": ("2012A&A...539A..15G", "ok"),  # Grondin et al. 2012
+    # -- still needing an ADS lookup (from B17's discovery-ref codes) --------
+    "BGS06": ("2006ApJS..165..480B (Blair et al. 2006, UV)", "verify-bibcode"),
+    "KPS10": ("Klimek, Points & Smith 2010", "verify-bibcode"),
+    "LHG81": ("1981ApJ...248..925L (Long, Helfand & Grabelsky 1981)", "verify-bibcode"),
+    "MHK14": ("2014A&A...561A..76M (Maggi et al. 2014)", "verify-bibcode"),
+    "MFT85": ("Mathewson et al. 1985", "verify-bibcode"),
+    "SCM94": ("Smith, Chu & Mac Low 1994", "verify-bibcode"),
+    "WM66": ("Westerlund & Mathewson 1966", "verify-bibcode"),
+    # -- unmapped B17 codes (TODO: resolve): BFC12a, BFC12b, BFC13, BKM14,
+    #    CDS95, CKS97, CMG93, DFB12, HISTORICAL, KSB15a, KSB15b, MFD83,
+    #    MFD84, MHB12, TM84
 }
 
 
