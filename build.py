@@ -856,7 +856,7 @@ properties. The re-extraction pipeline and its outputs live in a private
 companion repository.</p>
 <h3>How to cite</h3>
 <p>Until the accompanying paper is published, please cite this website by URL & data version, and the
-<a href="https://github.com/whyvav/MThesis">Master's Thesis</a> this catalog builds on:</p>
+<a href="https://github.com/whyvav/MThesis">Master's Thesis</a> & original sources this catalog builds on, e.g., :</p>
 <pre><code>@mastersthesis{Shukla2024_MThesis,
 	title = {X-ray {Evolution} of {Supernova} {Remnants} in the {Large} {Magellanic} {Cloud}},
 	shorttitle = {X-ray {Evolution} of {LMC} {SNRs}},
