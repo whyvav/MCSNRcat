@@ -818,7 +818,30 @@ render();
     )
 
 
-def about_page(version: str) -> str:
+def about_page(version: str, has_images: bool = False) -> str:
+    # The pipeline cutout PNGs (images/) are gitignored while VLMism/MCSNRcat
+    # remain unpublished/private (TODO 2): they render on local builds, where
+    # `has_images` is True, but must not surface a dead-link mention of them
+    # (or of images/manifest.csv, which won't exist) on the public CI build.
+    if has_images:
+        cutouts_note = (
+            ' and — where generated — show pipeline cutout PNGs (eROSITA-DE '
+            'DR1 X-ray, DeMCELS DR1 Hα &amp; [S II], ASKAP-EMU 888 MHz) built '
+            'by the <a href="https://github.com/whyvav/VLMism">VLMism</a> '
+            'pipeline, with per-file provenance in '
+            '<a href="images/manifest.csv">images/manifest.csv</a>. Credits: '
+            'eROSITA-DE (Merloni et al. 2024); DeMCELS (Points et al. 2024, '
+            'NSF NOIRLab); ASKAP-EMU (Pennock et al. 2021, CSIRO/CASDA); '
+            'SHASSA (Gaustad et al. 2001). Cutouts marked "quick-look" come '
+            'from <a href="https://alasky.cds.unistra.fr/hips-image-services/hips2fits">'
+            'CDS hips2fits</a> and are for visualization only.'
+        )
+        lit_link = ' · cutout images <a href="images/manifest.csv">manifest</a>'
+    else:
+        cutouts_note = '. Credits: SHASSA (Gaustad et al. 2001).'
+        lit_link = ''
+    # Plain string with %%-markers (not an f-string / Template): the BibTeX
+    # snippet below is full of literal `{...}` that an f-string would choke on.
     body = """
 <h1>About this catalog</h1>
 <p>This is a living, literature-consolidated census of supernova remnants in
@@ -871,19 +894,11 @@ companion repository.</p>
 <p>Object pages stream survey imagery client-side via
 <a href="https://aladin.cds.unistra.fr/">Aladin Lite</a> (DSS2, SHASSA Hα,
 eROSITA-DE DR1, XMM-Newton EPIC, RACS-low, SUMSS, GALEX, AllWISE, 2MASS
-HiPS), and — where generated — show pipeline cutout PNGs (eROSITA-DE DR1
-X-ray, DeMCELS DR1 Hα &amp; [S II], ASKAP-EMU 888 MHz) built by the
-<a href="https://github.com/whyvav/VLMism">VLMism</a> pipeline, with
-per-file provenance in <a href="images/manifest.csv">images/manifest.csv</a>.
-Credits: eROSITA-DE (Merloni et al. 2024); DeMCELS (Points et al. 2024,
-NSF NOIRLab); ASKAP-EMU (Pennock et al. 2021, CSIRO/CASDA); SHASSA
-(Gaustad et al. 2001). Cutouts marked "quick-look" come from
-<a href="https://alasky.cds.unistra.fr/hips-image-services/hips2fits">CDS
-hips2fits</a> and are for visualization only.</p>
+HiPS)%%CUTOUTS_NOTE%%</p>
 <h3>Data &amp; feedback</h3>
-<p>Download: <a href="catalog.csv">CSV</a> · <a href="catalog.json">JSON</a> ·
-cutout images <a href="images/manifest.csv">manifest</a>.
+<p>Download: <a href="catalog.csv">CSV</a> · <a href="catalog.json">JSON</a>%%LIT_LINK%%.
 For corrections or suggestions: open an issue on the <a href="https://github.com/whyvav/MCSNRcat">repository</a>, or simply drop me an <a href="mailto:vaibhavshukla008@gmail.com">email</a>.</p>"""
+    body = body.replace("%%CUTOUTS_NOTE%%", cutouts_note).replace("%%LIT_LINK%%", lit_link)
     return PAGE.substitute(
         title=f"About — {SITE_NAME}", root=".", site_name=SITE_NAME, body=body,
         version=version, version_note=VERSION_NOTE, head_extra="",
@@ -1169,16 +1184,22 @@ def main() -> None:
 """, encoding="utf-8")
     for asset in ("logo-mark.svg", "logo-lockup.svg", "favicon.svg", "lmc-shassa-halpha.jpg"):
         shutil.copy(Path("brand") / asset, out / "brand" / asset)
-    (out / "index.html").write_text(index_page(df, version), encoding="utf-8")
-    (out / "about.html").write_text(about_page(version), encoding="utf-8")
-    df.to_csv(out / "catalog.csv", index=False)
-    (out / "catalog.json").write_text(
-        df.replace({np.nan: None}).to_json(orient="records"), encoding="utf-8"
-    )
+    # Resolve the (gitignored, local-only-for-now — TODO 2) cutout image
+    # manifest before the About page is built, so its "Imagery" section can
+    # omit any mention of pipeline cutouts / images/manifest.csv on builds
+    # that don't have them (e.g. the public CI checkout), instead of linking
+    # to a file that won't exist in the deployed site.
     images_dir = Path(args.images)
     image_index = load_image_manifest(images_dir)
     if image_index:
         shutil.copytree(images_dir, out / "images", dirs_exist_ok=True)
+
+    (out / "index.html").write_text(index_page(df, version), encoding="utf-8")
+    (out / "about.html").write_text(about_page(version, has_images=bool(image_index)), encoding="utf-8")
+    df.to_csv(out / "catalog.csv", index=False)
+    (out / "catalog.json").write_text(
+        df.replace({np.nan: None}).to_json(orient="records"), encoding="utf-8"
+    )
 
     lit_index: dict = {}
     lit_path = resolve_lit_data(args.lit_data)

@@ -3,3 +3,10 @@
 site/
 1notes/
 __pycache__/
+
+# Pipeline-generated multiwavelength cutout PNGs (VLMism) stay local-only for now.
+# build.py still picks them up automatically for local builds/previews, but
+# they must not be committed to this public repo or published site.
+# images/README.md (structure docs) stays tracked.
+images/*/
+images/manifest.csv

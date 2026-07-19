@@ -4,6 +4,14 @@ One folder per catalog object, written by the VLMism Phase-2 pipeline
 (`VLMism/scripts/04_build_snr_images.py`) — **do not edit these by hand**;
 regenerate them instead.
 
+**Gitignored while private/unpublished.** VLMism and this catalog are an
+work-in-progress project, so `images/*/` and `images/manifest.csv` are 
+gitignored — only this README is tracked in the public repo. 
+`build.py` still picks the directory up automatically for
+local builds/previews (see the repo README's "Imagery" section); the
+public GitHub Pages site simply omits the cutout panels and links until
+this is revisited.
+
 ```
 images/
 ├── manifest.csv                      provenance: one row per PNG
